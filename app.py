@@ -64,7 +64,6 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "")
 EMOJI_API_KEY = os.getenv("EMOJI_API_KEY", "")
 
-# Expanded Default Emoji Array (Fallback)
 DEFAULT_EMOJI_GRID = [
     "📦", "📁", "🧰", "🎬", "🎲", "🍳", "🛠️", "💻", "🎮", "📚",
     "👕", "🛋️", "📷", "🔒", "🏠", "🍕", "🚲", "🚗", "🎨", "👟"
@@ -72,17 +71,14 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. WEB EMOJI SEARCH HELPER (USING SECURE EMOJI_API_KEY)
+# 2. WEB EMOJI SEARCH HELPER
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def search_emojis_online(search_query):
-    """Fetches matching unicode emojis via Emoji API using user's secret key."""
     if not search_query or not search_query.strip():
         return DEFAULT_EMOJI_GRID
 
-    # Check if user API key is provided
     if not EMOJI_API_KEY:
-        st.warning("⚠️ `EMOJI_API_KEY` secret is not configured in Streamlit. Showing default emoji grid.")
         return [em for em in DEFAULT_EMOJI_GRID if search_query.lower() in em] or DEFAULT_EMOJI_GRID
 
     try:
@@ -93,10 +89,8 @@ def search_emojis_online(search_query):
             data = res.json()
             if isinstance(data, list) and len(data) > 0:
                 return [item["character"] for item in data[:30] if "character" in item]
-        elif res.status_code == 429:
-            st.toast("⚠️ Emoji API rate limit reached. Using fallback icons.", icon="⌛")
-    except Exception as e:
-        st.caption(f"Emoji search error: {e}")
+    except Exception:
+        pass
 
     return DEFAULT_EMOJI_GRID
 
@@ -403,8 +397,6 @@ if check_password():
         st.session_state["finder_sort_asc"] = True
     if "finder_view_mode" not in st.session_state:
         st.session_state["finder_view_mode"] = "List"
-    if "selected_category_emoji" not in st.session_state:
-        st.session_state["selected_category_emoji"] = "📦"
 
     toolbar_col1, toolbar_col2, toolbar_col3 = st.columns([5, 3.5, 1.5])
 
@@ -434,7 +426,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. ADD ITEM DRAWER
+    # 7. ADD ITEM DRAWER WITH FIXED IMAGE SAVING
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -444,33 +436,26 @@ if check_password():
             category = st.selectbox("Select Item Category", category_options)
 
             if category == "Movies & TV":
-                search_title = st.text_input("Search Title or Collection", placeholder="e.g., The Dark Knight Trilogy")
-                if st.button("🔍 Search Movie Database") and search_title:
-                    unpacked = fetch_collection_movies(search_title)
-                    if unpacked:
-                        st.session_state["unpacked_collection"] = unpacked
-                    else:
-                        encoded_q = urllib.parse.quote_plus(search_title.strip())
-                        res = requests.get(f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}", timeout=5).json()
-                        st.session_state["search_results"] = res.get("Search", [])
-
-                if st.session_state.get("unpacked_collection"):
-                    if st.button("🚀 Add All Movies from Collection"):
-                        save_multiple_movies_to_csv("movies_and_tv_collection.csv", st.session_state["unpacked_collection"])
-                        st.session_state["show_add_form"] = False
-                        st.rerun()
-
                 with st.form("movie_form", clear_on_submit=True):
                     title = st.text_input("Title *")
                     rating = st.text_input("Rating")
                     year = st.text_input("Year Released")
                     length = st.text_input("Length of Movie")
-                    m_type = st.selectbox("Type", ["Movie", "TV", "Collection"])
+                    m_type = st.selectbox("Type", ["Movie", "TV", "Collection / Pack"])
                     genre = st.text_input("Genre")
                     poster_link = st.text_input("Poster URL")
-                    if st.form_submit_button("Save Movie"):
+                    uploaded_image = st.file_uploader("Or Upload Custom Poster File", type=["jpg", "png", "jpeg"], key="add_m_file")
+
+                    if st.form_submit_button("Save Movie Entry"):
                         if title:
-                            new_entry = {"Title": title, "Rating": rating, "Year Released": year, "Length of Movie": length, "Type": m_type, "Genre": genre, "Image_Path": poster_link}
+                            final_img = poster_link
+                            if uploaded_image:
+                                local_path = os.path.join(IMAGE_DIR, uploaded_image.name)
+                                with open(local_path, "wb") as f:
+                                    f.write(uploaded_image.getbuffer())
+                                final_img = local_path
+
+                            new_entry = {"Title": title, "Rating": rating, "Year Released": year, "Length of Movie": length, "Type": m_type, "Genre": genre, "Image_Path": final_img}
                             df = safe_load_csv("movies_and_tv_collection.csv", list(new_entry.keys()))
                             pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True).to_csv("movies_and_tv_collection.csv", index=False)
                             push_csv_to_github("movies_and_tv_collection.csv", f"Add movie '{title}'")
@@ -478,19 +463,24 @@ if check_password():
                             st.rerun()
 
             elif category == "Board & Card Games":
-                g_search = st.text_input("Search Game Title")
-                if st.button("🔍 Search BGG") and g_search:
-                    st.session_state["bgg_results"] = fetch_bgg_game_matches(g_search)
-
                 with st.form("game_form", clear_on_submit=True):
                     title = st.text_input("Game Title *")
                     players = st.text_input("Number of Players")
                     length = st.text_input("Length of Play")
                     age = st.text_input("Age Rating")
                     box_url = st.text_input("Box Photo URL")
+                    uploaded_image = st.file_uploader("Or Upload Custom Box Art File", type=["jpg", "png", "jpeg"], key="add_g_file")
+
                     if st.form_submit_button("Save Game"):
                         if title:
-                            new_entry = {"Title": title, "Number of Players": players, "Length of Play": length, "Age Rating": age, "Style of Game": "Board", "Image_Path": box_url}
+                            final_img = box_url
+                            if uploaded_image:
+                                local_path = os.path.join(IMAGE_DIR, uploaded_image.name)
+                                with open(local_path, "wb") as f:
+                                    f.write(uploaded_image.getbuffer())
+                                final_img = local_path
+
+                            new_entry = {"Title": title, "Number of Players": players, "Length of Play": length, "Age Rating": age, "Style of Game": "Board", "Image_Path": final_img}
                             df = safe_load_csv("board_and_card_games_collection.csv", list(new_entry.keys()))
                             pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True).to_csv("board_and_card_games_collection.csv", index=False)
                             push_csv_to_github("board_and_card_games_collection.csv", f"Add game '{title}'")
@@ -500,12 +490,12 @@ if check_password():
             elif category == "Kitchen Gear":
                 with st.form("kitchen_form", clear_on_submit=True):
                     title = st.text_input("Name of Item *")
-                    eq_type = st.selectbox("Type of Equipment", ["Appliance", "Cookware", "Utensil"])
+                    eq_type = st.selectbox("Type of Equipment", ["Appliance", "Cookware", "Utensil", "Decoration"])
                     manual = st.text_input("Manual Link URL")
                     image_url = st.text_input("Photo Image URL")
-                    uploaded_image = st.file_uploader("Or Upload Custom Item Photo File", type=["jpg", "png", "jpeg"])
+                    uploaded_image = st.file_uploader("Or Upload Custom Photo File", type=["jpg", "png", "jpeg"], key="add_k_file")
 
-                    if st.form_submit_button("Save Kitchen Item"):
+                    if st.form_submit_button("Save Kitchen / Decor Item"):
                         if title:
                             final_img = image_url
                             if uploaded_image:
@@ -517,7 +507,7 @@ if check_password():
                             new_entry = {"Name of Item": title, "Type of Equipment": eq_type, "Instruction Manual Link": manual, "Image_Path": final_img}
                             df = safe_load_csv("kitchen_gear_inventory_v2.csv", list(new_entry.keys()))
                             pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True).to_csv("kitchen_gear_inventory_v2.csv", index=False)
-                            push_csv_to_github("kitchen_gear_inventory_v2.csv", f"Add kitchen gear '{title}'")
+                            push_csv_to_github("kitchen_gear_inventory_v2.csv", f"Add kitchen item '{title}'")
                             st.session_state["show_add_form"] = False
                             st.rerun()
 
@@ -530,7 +520,7 @@ if check_password():
                             custom_data[field] = st.text_input(f"{field} * " if field == target_cat["Primary_Col"] else f"{field}")
                     
                     cust_img_url = st.text_input("Photo / Image URL")
-                    cust_file = st.file_uploader("Or Upload Image File", type=["jpg", "png", "jpeg"])
+                    cust_file = st.file_uploader("Or Upload Image File", type=["jpg", "png", "jpeg"], key=f"add_custom_{target_cat['Name']}")
 
                     if st.form_submit_button(f"Save to {target_cat['Name']}"):
                         primary_val = custom_data.get(target_cat["Primary_Col"])
@@ -601,7 +591,7 @@ if check_password():
     master_df = pd.concat([m_df, g_df, k_df] + custom_dfs, ignore_index=True)
 
     # -----------------------------------------------------------------------------
-    # 9. GLOBAL FUZZY SEARCH BAR & DYNAMIC FINDER NAVIGATION TABS
+    # 9. GLOBAL FUZZY SEARCH BAR & FINDER TABS
     # -----------------------------------------------------------------------------
     finder_search_q = st.text_input("🔍 Search Desktop Files (fuzzy & typo matching)...", key="finder_search_q")
 
@@ -631,7 +621,20 @@ if check_password():
                 st.session_state[input_key] = str(row.get(col_name, ""))
             edit_inputs[col_name] = st.text_input(f"{col_name}", key=input_key)
 
-        uploaded_img_file = st.file_uploader(f"Upload Image for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
+        uploaded_img_file = st.file_uploader(f"Upload Image File for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
+
+        # COLLECTION / TRILOGY NESTED SUB-MOVIES OPTION
+        if row.get("Category") == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
+            st.markdown("---")
+            st.subheader(f"🎬 Collection Pack Breakdown for '{item_id}'")
+            st.caption("Expand or auto-unpack child movies contained inside this collection pack:")
+            
+            if st.button("🔍 Auto-Unpack Child Movies from Web", key=f"unpack_nested_{unique_key_id}"):
+                unpacked_childs = fetch_collection_movies(item_id)
+                if unpacked_childs:
+                    save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_childs)
+                    st.success(f"Unpacked and added {len(unpacked_childs)} child films to inventory!")
+                    st.rerun()
 
         col1, col2 = st.columns(2)
         with col1:
@@ -771,35 +774,122 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH SECURE ONLINE EMOJI API SEARCH
+    # 10. TAB RENDERING WITH RESTORED BULK EDIT TOOLBARS
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
 
+    # MOVIES TAB WITH BULK METADATA ADD
     with tabs[1]:
+        with st.expander("🛠️ Bulk Metadata Add & Collection Unpacker"):
+            st.write("Bulk unpack collections or fetch OMDb metadata for missing movie entries:")
+            m_bulk_q = st.text_input("Collection / Movie Search Title", key="bulk_m_query")
+            if st.button("🔍 Fetch & Unpack Movies in Bulk", key="btn_bulk_m_exec"):
+                unpacked_f = fetch_collection_movies(m_bulk_q)
+                if unpacked_f:
+                    save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_f)
+                    st.success(f"Added {len(unpacked_f)} movie titles!")
+                    st.rerun()
+
+        st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
 
+    # BOARD GAMES TAB WITH BULK GAME DETAILS ADD
     with tabs[2]:
+        with st.expander("🛠️ Bulk Add Game Details & Box Art Scanner"):
+            missing_games_mask = (
+                df_games["Image_Path"].isna()
+                | (df_games["Image_Path"].astype(str).str.strip() == "")
+            )
+            missing_games_df = df_games[missing_games_mask]
+
+            if missing_games_df.empty:
+                st.success("🎉 All titles in your Board Games database have complete details!")
+            else:
+                st.warning(f"Found {len(missing_games_df)} game(s) missing details or box art.")
+                if st.button("🔍 Scan BGG for Missing Game Details", key="btn_bgg_bulk_scan"):
+                    game_scan_results = []
+                    progress_bar = st.progress(0)
+
+                    for i, (_, g_row) in enumerate(missing_games_df.iterrows()):
+                        g_title = g_row["Title"]
+                        matches = fetch_bgg_game_matches(g_title)
+                        if matches:
+                            details = fetch_bgg_game_details(matches[0]["id"])
+                            if details.get("Image_Path"):
+                                game_scan_results.append({
+                                    "Title": g_title,
+                                    "Found_Image": details["Image_Path"],
+                                    "Found_Players": details.get("Number of Players", ""),
+                                    "Found_Length": details.get("Length of Play", ""),
+                                    "Found_Age": details.get("Age Rating", ""),
+                                })
+                        progress_bar.progress((i + 1) / len(missing_games_df))
+
+                    st.session_state["bulk_game_scan_results"] = game_scan_results
+
+                if st.session_state.get("bulk_game_scan_results"):
+                    st.markdown("#### Review Discovered Game Details")
+                    if st.button("⚡ Apply All BGG Game Details", key="btn_accept_bgg_bulk"):
+                        updates = st.session_state["bulk_game_scan_results"]
+                        g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+                        for item in updates:
+                            mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
+                            if mask_g.any():
+                                idx_g = g_df_csv[mask_g].index[0]
+                                if item["Found_Image"]:
+                                    g_df_csv.at[idx_g, "Image_Path"] = item["Found_Image"]
+                                if item["Found_Players"]:
+                                    g_df_csv.at[idx_g, "Number of Players"] = item["Found_Players"]
+                        g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
+                        push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
+                        st.session_state.pop("bulk_game_scan_results", None)
+                        st.success("Updated game details and box art!")
+                        st.rerun()
+
+        st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
+    # KITCHEN & DECORATION TAB WITH BULK IMAGE ADD
     with tabs[3]:
+        with st.expander("🛠️ Bulk Add Images for Kitchen & Decor Gear"):
+            st.write("Upload or auto-generate images in bulk for kitchen and decoration items missing photos:")
+            
+            bulk_files = st.file_uploader("Upload Multiple Photo Files at Once", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key="bulk_k_upload")
+            if st.button("📥 Save Uploaded Photos to Kitchen Items", key="btn_bulk_k_save") and bulk_files:
+                k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
+                for f in bulk_files:
+                    local_path = os.path.join(IMAGE_DIR, f.name)
+                    with open(local_path, "wb") as out_f:
+                        out_f.write(f.getbuffer())
+                    
+                    clean_f_name = os.path.splitext(f.name)[0].lower()
+                    mask = k_df_csv["Name of Item"].astype(str).str.lower().str.contains(clean_f_name)
+                    if mask.any():
+                        idx = k_df_csv[mask].index[0]
+                        k_df_csv.at[idx, "Image_Path"] = local_path
+
+                k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
+                push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk upload kitchen photos")
+                st.success(f"Processed {len(bulk_files)} photos!")
+                st.rerun()
+
+        st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
+    # DYNAMIC CUSTOM TABS
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
 
-    # "➕ Add Category" Builder Tab
+    # ADD CATEGORY BUILDER TAB
     with tabs[-1]:
         st.subheader("🛠️ Create New Inventory Category")
         st.markdown("Configure a new inventory category schema. The app will automatically create a dedicated CSV file, sync it with GitHub, and generate custom forms for it.")
 
         st.markdown("##### 1. Live Web Emoji Search")
-        
         selected_emoji = st.session_state.get("selected_category_emoji", "📦")
-        
         emoji_search_q = st.text_input("🌐 Search Web Emoji Database", placeholder="Type keywords like 'pizza', 'camera', 'tool', 'car'...", key="web_emoji_search_q")
-        
         web_emojis = search_emojis_online(emoji_search_q)
 
         with st.expander(f"🎨 Web Search Results ({len(web_emojis)} found | Current Selected: {selected_emoji})", expanded=True):
