@@ -103,8 +103,10 @@ def push_csv_to_github(file_path, commit_message="Update inventory via app"):
 
 
 # -----------------------------------------------------------------------------
-# 3. DATA HELPERS
+# 3. DATA & SCHEMA HELPERS
 # -----------------------------------------------------------------------------
+CUSTOM_CATEGORIES_FILE = "custom_categories_registry.csv"
+
 def safe_load_csv(file_path, expected_columns):
     if not os.path.exists(file_path):
         return pd.DataFrame(columns=expected_columns)
@@ -117,6 +119,55 @@ def safe_load_csv(file_path, expected_columns):
     except Exception as e:
         st.error(f"Error reading {file_path}: {e}")
         return pd.DataFrame(columns=expected_columns)
+
+
+def load_custom_categories():
+    if not os.path.exists(CUSTOM_CATEGORIES_FILE):
+        return []
+    try:
+        df = pd.read_csv(CUSTOM_CATEGORIES_FILE)
+        categories = []
+        for _, row in df.iterrows():
+            fields = [f.strip() for f in str(row["Fields"]).split(",") if f.strip()]
+            categories.append({
+                "Name": str(row["Category Name"]),
+                "Icon": str(row["Icon"]),
+                "File": str(row["File Path"]),
+                "Primary_Col": str(row["Primary Col"]),
+                "Fields": fields,
+            })
+        return categories
+    except Exception as e:
+        st.error(f"Error reading categories registry: {e}")
+        return []
+
+
+def save_custom_category(cat_name, icon, primary_col, fields_list):
+    clean_filename = "".join(c for c in cat_name.lower().replace(" ", "_") if c.isalnum() or c == "_") + "_collection.csv"
+    
+    # Ensure Image_Path is always in fields
+    if "Image_Path" not in fields_list:
+        fields_list.append("Image_Path")
+    if primary_col not in fields_list:
+        fields_list.insert(0, primary_col)
+
+    # 1. Initialize the new CSV file locally & push to GitHub
+    empty_df = pd.DataFrame(columns=fields_list)
+    empty_df.to_csv(clean_filename, index=False)
+    push_csv_to_github(clean_filename, f"Create database for new category '{cat_name}'")
+
+    # 2. Register new category into custom registry CSV
+    reg_df = safe_load_csv(CUSTOM_CATEGORIES_FILE, ["Category Name", "Icon", "File Path", "Primary Col", "Fields"])
+    new_reg = {
+        "Category Name": cat_name,
+        "Icon": icon,
+        "File Path": clean_filename,
+        "Primary Col": primary_col,
+        "Fields": ",".join(fields_list)
+    }
+    updated_reg = pd.concat([reg_df, pd.DataFrame([new_reg])], ignore_index=True)
+    updated_reg.to_csv(CUSTOM_CATEGORIES_FILE, index=False)
+    push_csv_to_github(CUSTOM_CATEGORIES_FILE, f"Register category '{cat_name}'")
 
 
 def fetch_bgg_game_matches(game_title):
@@ -306,6 +357,9 @@ def check_password():
 
 
 if check_password():
+    # Load dynamic custom categories
+    custom_cats = load_custom_categories()
+
     # -----------------------------------------------------------------------------
     # 5. FINDER TOP TOOLBAR
     # -----------------------------------------------------------------------------
@@ -349,7 +403,9 @@ if check_password():
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
             st.subheader("➕ Add New Inventory Item")
-            category = st.selectbox("Select Item Category", ["Movies & TV", "Board & Card Games", "Kitchen Gear"])
+            
+            category_options = ["Movies & TV", "Board & Card Games", "Kitchen Gear"] + [c["Name"] for c in custom_cats]
+            category = st.selectbox("Select Item Category", category_options)
 
             if category == "Movies & TV":
                 search_title = st.text_input("Search Title or Collection", placeholder="e.g., The Dark Knight Trilogy")
@@ -429,6 +485,35 @@ if check_password():
                             st.session_state["show_add_form"] = False
                             st.rerun()
 
+            # Dynamic Form for Custom Created Categories
+            else:
+                target_cat = next(c for c in custom_cats if c["Name"] == category)
+                with st.form(f"custom_form_{target_cat['Name']}", clear_on_submit=True):
+                    custom_data = {}
+                    for field in target_cat["Fields"]:
+                        if field != "Image_Path":
+                            custom_data[field] = st.text_input(f"{field} * " if field == target_cat["Primary_Col"] else f"{field}")
+                    
+                    cust_img_url = st.text_input("Photo / Image URL")
+                    cust_file = st.file_uploader("Or Upload Image File", type=["jpg", "png", "jpeg"])
+
+                    if st.form_submit_button(f"Save to {target_cat['Name']}"):
+                        primary_val = custom_data.get(target_cat["Primary_Col"])
+                        if primary_val:
+                            final_img = cust_img_url
+                            if cust_file:
+                                local_path = os.path.join(IMAGE_DIR, cust_file.name)
+                                with open(local_path, "wb") as f:
+                                    f.write(cust_file.getbuffer())
+                                final_img = local_path
+                            
+                            custom_data["Image_Path"] = final_img
+                            df = safe_load_csv(target_cat["File"], target_cat["Fields"])
+                            pd.concat([df, pd.DataFrame([custom_data])], ignore_index=True).to_csv(target_cat["File"], index=False)
+                            push_csv_to_github(target_cat["File"], f"Add {category} item '{primary_val}'")
+                            st.session_state["show_add_form"] = False
+                            st.rerun()
+
         st.markdown("---")
 
     # -----------------------------------------------------------------------------
@@ -465,10 +550,24 @@ if check_password():
     k_df["_TitleCol"] = "Name of Item"
     k_df["_Cols"] = [["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"]] * len(k_df)
 
-    master_df = pd.concat([m_df, g_df, k_df], ignore_index=True)
+    # Append custom categories into Master DataFrame
+    custom_dfs = []
+    for c in custom_cats:
+        c_loaded = safe_load_csv(c["File"], c["Fields"])
+        c_copy = c_loaded.copy()
+        c_copy["Name"] = c_copy[c["Primary_Col"]]
+        c_copy["Category"] = c["Name"]
+        c_copy["Kind"] = c["Name"]
+        c_copy["Details"] = "Custom Item"
+        c_copy["_File"] = c["File"]
+        c_copy["_TitleCol"] = c["Primary_Col"]
+        c_copy["_Cols"] = [c["Fields"]] * len(c_copy)
+        custom_dfs.append(c_copy)
+
+    master_df = pd.concat([m_df, g_df, k_df] + custom_dfs, ignore_index=True)
 
     # -----------------------------------------------------------------------------
-    # 8. GLOBAL FUZZY SEARCH BAR & FINDER NAVIGATION TABS
+    # 8. GLOBAL FUZZY SEARCH BAR & DYNAMIC FINDER NAVIGATION TABS
     # -----------------------------------------------------------------------------
     finder_search_q = st.text_input("🔍 Search Desktop Files (fuzzy & typo matching)...", key="finder_search_q")
 
@@ -487,12 +586,9 @@ if check_password():
         mask = master_df["Name"].apply(is_fuzzy_match)
         master_df = master_df[mask]
 
-    tab_all, tab_movies, tab_games, tab_kitchen = st.tabs([
-        "🌐 All Files (Master)",
-        "🎬 Movies & TV",
-        "🎲 Board & Card Games",
-        "🍳 Kitchen Gear"
-    ])
+    # Dynamically build tabs including static + custom + new category builder (+)
+    tab_names = ["🌐 All Files (Master)", "🎬 Movies & TV", "🎲 Board & Card Games", "🍳 Kitchen Gear"] + [f"{c['Icon']} {c['Name']}" for c in custom_cats] + ["➕ Add Category"]
+    tabs = st.tabs(tab_names)
 
     def render_edit_drawer(unique_key_id, item_id, row, editable_cols, file_path, title_col):
         edit_inputs = {}
@@ -642,101 +738,50 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 9. TAB CONTENT WITH CATEGORY-SPECIFIC BULK AUDIT TOOLS
+    # 9. TAB RENDERING INCLUDING CUSTOM CATEGORY BUILDER
     # -----------------------------------------------------------------------------
-    with tab_all:
+    with tabs[0]:
         display_finder_view(master_df, "master")
 
-    with tab_movies:
-        with st.expander("🛠️ Bulk Collection Unpacker"):
-            st.write("Search for a movie collection (e.g. 'Dark Knight Trilogy') to unpack into individual films:")
-            m_bulk_q = st.text_input("Collection Search Title", key="bulk_m_query")
-            if st.button("Unpack Collection", key="btn_bulk_m_exec"):
-                unpacked_f = fetch_collection_movies(m_bulk_q)
-                if unpacked_f:
-                    save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_f)
-                    st.success(f"Added {len(unpacked_f)} films!")
-                    st.rerun()
-
-        st.markdown("---")
+    with tabs[1]:
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
 
-    with tab_games:
-        with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Game Box Art"):
-            missing_games_mask = (
-                df_games["Image_Path"].isna()
-                | (df_games["Image_Path"].astype(str).str.strip() == "")
-            )
-            missing_games_df = df_games[missing_games_mask]
-
-            if missing_games_df.empty:
-                st.success("🎉 All titles in your Board & Card Games database have box art!")
-            else:
-                st.warning(f"Found {len(missing_games_df)} game(s) missing box art.")
-                if st.button("🔍 Scan BGG for Missing Box Art", key="btn_bgg_bulk_scan"):
-                    game_scan_results = []
-                    progress_bar = st.progress(0)
-
-                    for i, (_, g_row) in enumerate(missing_games_df.iterrows()):
-                        g_title = g_row["Title"]
-                        matches = fetch_bgg_game_matches(g_title)
-                        if matches:
-                            details = fetch_bgg_game_details(matches[0]["id"])
-                            if details.get("Image_Path"):
-                                game_scan_results.append({
-                                    "Title": g_title,
-                                    "Found_Image": details["Image_Path"],
-                                    "Found_Players": details.get("Number of Players", ""),
-                                })
-                        progress_bar.progress((i + 1) / len(missing_games_df))
-
-                    st.session_state["bulk_game_scan_results"] = game_scan_results
-
-                if st.session_state.get("bulk_game_scan_results"):
-                    st.markdown("#### Review Found Game Box Art")
-                    if st.button("⚡ Accept All Game Updates", key="btn_accept_bgg_bulk"):
-                        updates = st.session_state["bulk_game_scan_results"]
-                        g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
-                        for item in updates:
-                            mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
-                            if mask_g.any():
-                                idx_g = g_df_csv[mask_g].index[0]
-                                if item["Found_Image"]:
-                                    g_df_csv.at[idx_g, "Image_Path"] = item["Found_Image"]
-                        g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
-                        push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
-                        st.session_state.pop("bulk_game_scan_results", None)
-                        st.success("Updated game box art!")
-                        st.rerun()
-
-        st.markdown("---")
+    with tabs[2]:
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
-    with tab_kitchen:
-        with st.expander("🛠️ Bulk Kitchen Photo Search & Auto-Fill"):
-            st.write("Scan kitchen items missing photos to auto-suggest images via Picsum:")
-            missing_k_mask = (
-                df_kitchen["Image_Path"].isna()
-                | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
-            )
-            missing_k_df = df_kitchen[missing_k_mask]
-
-            if missing_k_df.empty:
-                st.success("🎉 All items in your Kitchen Gear database have photos!")
-            else:
-                st.warning(f"Found {len(missing_k_df)} kitchen item(s) missing photos.")
-                if st.button("📷 Auto-Generate Kitchen Web Photos", key="btn_kitchen_bulk_gen"):
-                    k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
-                    for idx_k, k_row in missing_k_df.iterrows():
-                        k_name = k_row["Name of Item"]
-                        mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(k_name).lower().strip()
-                        if mask_k.any():
-                            target_idx = k_df_csv[mask_k].index[0]
-                            k_df_csv.at[target_idx, "Image_Path"] = f"https://picsum.photos/seed/{hash(k_name)}/400/300"
-                    k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
-                    push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk kitchen photo update")
-                    st.success("Auto-generated product photos for kitchen gear!")
-                    st.rerun()
-
-        st.markdown("---")
+    with tabs[3]:
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
+
+    # Dynamic Custom Tabs Render
+    for i, custom_cat in enumerate(custom_cats):
+        with tabs[4 + i]:
+            display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
+
+    # Final Tab: "➕ Add Category" Builder
+    with tabs[-1]:
+        st.subheader("🛠️ Create New Inventory Category")
+        st.markdown("Configure a new inventory category schema. The app will automatically create a dedicated CSV file, sync it with GitHub, and generate custom search and edit forms for it.")
+
+        with st.form("create_new_cat_form", clear_on_submit=True):
+            col_c1, col_c2 = st.columns([3, 1])
+            with col_c1:
+                new_cat_name = st.text_input("New Category Name *", placeholder="e.g., Power Tools, Video Games, Books")
+            with col_c2:
+                new_cat_icon = st.text_input("Category Emoji/Icon", value="🧰")
+
+            primary_col_name = st.text_input("Primary Item Name Field *", value="Item Name", help="The main name used to identify items in the file list.")
+            
+            raw_fields_input = st.text_area(
+                "Fields/Columns to Track (comma-separated) *",
+                value="Brand, Model, Serial Number, Purchase Date, Price",
+                help="Enter all the attributes you want to track for this category, separated by commas."
+            )
+
+            if st.form_submit_button("🚀 Save Category & Initialize Database"):
+                if new_cat_name and primary_col_name and raw_fields_input:
+                    parsed_fields = [f.strip() for f in raw_fields_input.split(",") if f.strip()]
+                    save_custom_category(new_cat_name, new_cat_icon, primary_col_name, parsed_fields)
+                    st.success(f"🎉 Created '{new_cat_name}' category! Initialized CSV and synced to GitHub.")
+                    st.rerun()
+                else:
+                    st.error("Please fill in the category name, primary item field, and at least one attribute field.")
