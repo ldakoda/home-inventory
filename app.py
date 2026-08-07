@@ -38,7 +38,6 @@ def push_csv_to_github(file_path, commit_message="Update inventory via app"):
         with open(file_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Check if file already exists in repository to get its SHA hash
         try:
             repo_file = repo.get_contents(file_path, ref="main")
             repo.update_file(
@@ -571,7 +570,7 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH EDIT / DELETE SUPPORT
+    # 7. PAGE: BROWSE INVENTORY WITH EDIT / DELETE / METADATA SEARCH SUPPORT
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -621,6 +620,7 @@ if check_password():
             details_func,
             file_path,
             editable_cols,
+            is_movie_tab=False,
             image_col="Image_Path",
         ):
             if df.empty:
@@ -656,11 +656,71 @@ if check_password():
 
                         # In-line Edit / Delete Form
                         with st.expander(f"✏️ Edit / Delete '{item_id}'"):
+                            # --- MOVIE METADATA AUTO-FILL SEARCH INSIDE EDIT FORM ---
+                            if is_movie_tab and OMDB_API_KEY:
+                                st.markdown("##### 🔍 Search & Auto-Fill Metadata")
+                                col_m1, col_m2 = st.columns([3, 1])
+                                with col_m1:
+                                    edit_search_q = st.text_input(
+                                        "Search Title",
+                                        value=item_id,
+                                        key=f"edit_search_q_{idx}",
+                                    )
+                                with col_m2:
+                                    st.write("")
+                                    st.write("")
+                                    if st.button("Search & Fill", key=f"btn_edit_search_{idx}"):
+                                        try:
+                                            url = f"http://www.omdbapi.com/?s={edit_search_q}&apikey={OMDB_API_KEY}"
+                                            res = requests.get(url, timeout=4).json()
+                                            if res.get("Response") == "True":
+                                                st.session_state[f"edit_matches_{idx}"] = res.get("Search", [])
+                                                st.success(f"Found {len(res.get('Search', []))} match(es)!")
+                                            else:
+                                                st.error("No matches found.")
+                                        except Exception as e:
+                                            st.error(f"Error: {e}")
+
+                                # Show selection list if search results exist for this card
+                                if st.session_state.get(f"edit_matches_{idx}"):
+                                    matches = st.session_state[f"edit_matches_{idx}"]
+                                    opts = {
+                                        f"{m['Title']} ({m.get('Year', 'N/A')})": m["imdbID"]
+                                        for m in matches
+                                    }
+                                    selected_imdb = st.selectbox(
+                                        "Select correct match:",
+                                        list(opts.keys()),
+                                        key=f"select_edit_match_{idx}",
+                                    )
+                                    if st.button("✅ Load Into Form", key=f"btn_load_edit_{idx}"):
+                                        imdb_id = opts[selected_label] if 'selected_label' in locals() else list(opts.values())[0]
+                                        d_url = f"http://www.omdbapi.com/?i={opts[selected_imdb]}&apikey={OMDB_API_KEY}"
+                                        d_res = requests.get(d_url, timeout=4).json()
+                                        if d_res.get("Response") == "True":
+                                            st.session_state[f"override_{idx}_Title"] = d_res.get("Title", "")
+                                            st.session_state[f"override_{idx}_Rating"] = d_res.get("Rated", "")
+                                            st.session_state[f"override_{idx}_Year Released"] = d_res.get("Year", "")
+                                            st.session_state[f"override_{idx}_Length of Movie"] = d_res.get("Runtime", "")
+                                            st.session_state[f"override_{idx}_Type"] = d_res.get("Type", "movie").capitalize()
+                                            st.session_state[f"override_{idx}_Genre"] = d_res.get("Genre", "")
+                                            p_url = d_res.get("Poster", "")
+                                            st.session_state[f"override_{idx}_Image_Path"] = p_url if p_url != "N/A" else ""
+                                            st.success("Loaded metadata! Review and click 'Save Changes' below.")
+                                            st.rerun()
+
+                                st.markdown("---")
+
+                            # Render form inputs (pre-filling overrides if metadata search was used)
                             edit_inputs = {}
                             for col_name in editable_cols:
+                                default_val = st.session_state.get(
+                                    f"override_{idx}_{col_name}",
+                                    str(row.get(col_name, "")),
+                                )
                                 edit_inputs[col_name] = st.text_input(
                                     f"{col_name}",
-                                    value=str(row.get(col_name, "")),
+                                    value=default_val,
                                     key=f"edit_{file_path}_{idx}_{col_name}",
                                 )
 
@@ -865,6 +925,7 @@ if check_password():
                     "Genre",
                     "Image_Path",
                 ],
+                is_movie_tab=True,
             )
 
         with tab_games:
