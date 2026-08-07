@@ -62,6 +62,16 @@ BGG_API_TOKEN = os.getenv("BGG_TOKEN", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "")
 
+# Curated Emoji Library Dictionary for Category Creation
+EMOJI_LIBRARY = {
+    "General & Storage": ["📦", "📁", "🗄️", "🏷️", "🔒", "🏠", "📂", "💼", "🧰", "🧺"],
+    "Tech & Media": ["🎬", "📺", "💻", "📱", "🎧", "📷", "🔌", "⌨️", "🖥️", "🎙️", "🔊", "📼"],
+    "Games & Hobbies": ["🎲", "🎮", "🎯", "🧩", "⚽", "🎨", "🎸", "📚", "🏹", "🧸", "🃏", "🏓"],
+    "Kitchen & Home": ["🍳", "☕", "🍽️", "🫖", "🔪", "🧹", "🛋️", "🪴", "🛏️", "🕯️", "🍷", "🍲"],
+    "Tools & Outdoor": ["🛠️", "🔨", "🪛", "🪚", "🧰", "⛺", "🎣", "🚲", "🌱", "🔦", "🪜", "⚡"],
+    "Clothes & Goods": ["👕", "👟", "🕶️", "⌚", "🎒", "💍", "🧢", "🧳", "🧴", "🎨"]
+}
+
 
 # -----------------------------------------------------------------------------
 # 2. GITHUB SYNC HELPER FUNCTION
@@ -145,18 +155,15 @@ def load_custom_categories():
 def save_custom_category(cat_name, icon, primary_col, fields_list):
     clean_filename = "".join(c for c in cat_name.lower().replace(" ", "_") if c.isalnum() or c == "_") + "_collection.csv"
     
-    # Ensure Image_Path is always in fields
     if "Image_Path" not in fields_list:
         fields_list.append("Image_Path")
     if primary_col not in fields_list:
         fields_list.insert(0, primary_col)
 
-    # 1. Initialize the new CSV file locally & push to GitHub
     empty_df = pd.DataFrame(columns=fields_list)
     empty_df.to_csv(clean_filename, index=False)
     push_csv_to_github(clean_filename, f"Create database for new category '{cat_name}'")
 
-    # 2. Register new category into custom registry CSV
     reg_df = safe_load_csv(CUSTOM_CATEGORIES_FILE, ["Category Name", "Icon", "File Path", "Primary Col", "Fields"])
     new_reg = {
         "Category Name": cat_name,
@@ -357,7 +364,6 @@ def check_password():
 
 
 if check_password():
-    # Load dynamic custom categories
     custom_cats = load_custom_categories()
 
     # -----------------------------------------------------------------------------
@@ -369,6 +375,8 @@ if check_password():
         st.session_state["finder_sort_asc"] = True
     if "finder_view_mode" not in st.session_state:
         st.session_state["finder_view_mode"] = "List"
+    if "selected_category_emoji" not in st.session_state:
+        st.session_state["selected_category_emoji"] = "📦"
 
     toolbar_col1, toolbar_col2, toolbar_col3 = st.columns([5, 3.5, 1.5])
 
@@ -485,7 +493,6 @@ if check_password():
                             st.session_state["show_add_form"] = False
                             st.rerun()
 
-            # Dynamic Form for Custom Created Categories
             else:
                 target_cat = next(c for c in custom_cats if c["Name"] == category)
                 with st.form(f"custom_form_{target_cat['Name']}", clear_on_submit=True):
@@ -550,7 +557,6 @@ if check_password():
     k_df["_TitleCol"] = "Name of Item"
     k_df["_Cols"] = [["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"]] * len(k_df)
 
-    # Append custom categories into Master DataFrame
     custom_dfs = []
     for c in custom_cats:
         c_loaded = safe_load_csv(c["File"], c["Fields"])
@@ -586,7 +592,6 @@ if check_password():
         mask = master_df["Name"].apply(is_fuzzy_match)
         master_df = master_df[mask]
 
-    # Dynamically build tabs including static + custom + new category builder (+)
     tab_names = ["🌐 All Files (Master)", "🎬 Movies & TV", "🎲 Board & Card Games", "🍳 Kitchen Gear"] + [f"{c['Icon']} {c['Name']}" for c in custom_cats] + ["➕ Add Category"]
     tabs = st.tabs(tab_names)
 
@@ -738,7 +743,7 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 9. TAB RENDERING INCLUDING CUSTOM CATEGORY BUILDER
+    # 9. TAB RENDERING INCLUDING EMOJI PICKER LIBRARY IN BUILDER
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
@@ -752,22 +757,52 @@ if check_password():
     with tabs[3]:
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
-    # Dynamic Custom Tabs Render
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
 
-    # Final Tab: "➕ Add Category" Builder
+    # "➕ Add Category" Builder Tab with Interactive Emoji Library
     with tabs[-1]:
         st.subheader("🛠️ Create New Inventory Category")
-        st.markdown("Configure a new inventory category schema. The app will automatically create a dedicated CSV file, sync it with GitHub, and generate custom search and edit forms for it.")
+        st.markdown("Configure a new inventory category schema. The app will automatically create a dedicated CSV file, sync it with GitHub, and generate custom forms for it.")
+
+        st.markdown("##### 1. Select Category Icon")
+        
+        # Interactive Emoji Picker Grid
+        selected_emoji = st.session_state.get("selected_category_emoji", "📦")
+        
+        emoji_search_q = st.text_input("🔍 Search Emoji Library", placeholder="e.g., tool, game, camera", key="emoji_search_q")
+        
+        with st.expander(f"🎨 Browse Emoji Library (Current Selected: {selected_emoji})", expanded=True):
+            for group_name, emoji_list in EMOJI_LIBRARY.items():
+                if emoji_search_q:
+                    # Filter matching group or icons
+                    matching_emojis = [e for e in emoji_list if emoji_search_q.lower() in group_name.lower()]
+                    if not matching_emojis and any(q in group_name.lower() for q in emoji_search_q.lower().split()):
+                        matching_emojis = emoji_list
+                    if not matching_emojis:
+                        continue
+                else:
+                    matching_emojis = emoji_list
+
+                st.caption(f"**{group_name}**")
+                grid_cols = st.columns(10)
+                for idx, em in enumerate(matching_emojis):
+                    with grid_cols[idx % 10]:
+                        btn_type = "primary" if em == selected_emoji else "secondary"
+                        if st.button(em, key=f"emoji_btn_{group_name}_{idx}_{em}", type=btn_type):
+                            st.session_state["selected_category_emoji"] = em
+                            st.rerun()
+
+        st.markdown("---")
+        st.markdown("##### 2. Category Details & Fields")
 
         with st.form("create_new_cat_form", clear_on_submit=True):
             col_c1, col_c2 = st.columns([3, 1])
             with col_c1:
                 new_cat_name = st.text_input("New Category Name *", placeholder="e.g., Power Tools, Video Games, Books")
             with col_c2:
-                new_cat_icon = st.text_input("Category Emoji/Icon", value="🧰")
+                st.text_input("Selected Icon", value=st.session_state.get("selected_category_emoji", "📦"), disabled=True)
 
             primary_col_name = st.text_input("Primary Item Name Field *", value="Item Name", help="The main name used to identify items in the file list.")
             
@@ -780,8 +815,9 @@ if check_password():
             if st.form_submit_button("🚀 Save Category & Initialize Database"):
                 if new_cat_name and primary_col_name and raw_fields_input:
                     parsed_fields = [f.strip() for f in raw_fields_input.split(",") if f.strip()]
-                    save_custom_category(new_cat_name, new_cat_icon, primary_col_name, parsed_fields)
-                    st.success(f"🎉 Created '{new_cat_name}' category! Initialized CSV and synced to GitHub.")
+                    chosen_icon = st.session_state.get("selected_category_emoji", "📦")
+                    save_custom_category(new_cat_name, chosen_icon, primary_col_name, parsed_fields)
+                    st.success(f"🎉 Created '{new_cat_name}' category with icon {chosen_icon}! Synced to GitHub.")
                     st.rerun()
                 else:
                     st.error("Please fill in the category name, primary item field, and at least one attribute field.")
