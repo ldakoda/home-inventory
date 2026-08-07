@@ -1,5 +1,6 @@
 import os
 import urllib.parse
+import xml.etree.ElementTree as ET
 import pandas as pd
 import requests
 import streamlit as st
@@ -94,6 +95,65 @@ def safe_load_csv(file_path, expected_columns):
         return pd.DataFrame(columns=expected_columns)
 
 
+# --- BOARD GAME GEK (BGG) API HELPERS ---
+def fetch_bgg_game_matches(game_title):
+    """Queries BoardGameGeek free API for game titles and thumbnails."""
+    try:
+        encoded_q = urllib.parse.quote_plus(game_title.strip())
+        url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            root = ET.fromstring(res.content)
+            items = []
+            for item in root.findall("item")[:6]:  # Top 6 matches
+                bgg_id = item.attrib.get("id")
+                name_elem = item.find("name")
+                name = name_elem.attrib.get("value") if name_elem is not None else game_title
+                year_elem = item.find("yearpublished")
+                year = year_elem.attrib.get("value") if year_elem is not None else ""
+                items.append({"id": bgg_id, "name": name, "year": year})
+            return items
+    except Exception as e:
+        st.error(f"BGG Fetch Error: {e}")
+    return []
+
+
+def fetch_bgg_game_details(bgg_id):
+    """Fetches details (image, player count, playtime, age) for a BGG ID."""
+    try:
+        url = f"https://boardgamegeek.com/xmlapi2/thing?id={bgg_id}"
+        res = requests.get(url, timeout=5)
+        if res.status_code == 200:
+            root = ET.fromstring(res.content)
+            item = root.find("item")
+            if item is not None:
+                image_elem = item.find("image")
+                image_url = image_elem.text if image_elem is not None else ""
+                
+                min_p = item.find("minplayers").attrib.get("value") if item.find("minplayers") is not None else ""
+                max_p = item.find("maxplayers").attrib.get("value") if item.find("maxplayers") is not None else ""
+                players = f"{min_p}-{max_p} Players" if min_p and max_p else min_p
+
+                min_t = item.find("minplaytime").attrib.get("value") if item.find("minplaytime") is not None else ""
+                max_t = item.find("maxplaytime").attrib.get("value") if item.find("maxplaytime") is not None else ""
+                length = f"{min_t}-{max_t} min" if min_t and max_t else f"{min_t} min"
+
+                age = item.find("minage").attrib.get("value") if item.find("minage") is not None else ""
+                if age:
+                    age = f"{age}+"
+
+                return {
+                    "Image_Path": image_url,
+                    "Number of Players": players,
+                    "Length of Play": length,
+                    "Age Rating": age,
+                }
+    except Exception as e:
+        st.error(f"BGG Detail Error: {e}")
+    return {}
+
+
+# --- OODB & MOVIE HELPERS ---
 def fetch_collection_movies(collection_title):
     """Detects collection keywords and attempts to fetch individual film entries."""
     if not OMDB_API_KEY:
@@ -405,22 +465,58 @@ if check_password():
                         for key in ["m_title", "m_year", "m_rating", "m_length", "m_type", "m_genre", "m_poster", "search_results", "unpacked_collection"]:
                             st.session_state.pop(key, None)
 
-        # --- CATEGORY 2: BOARD & CARD GAMES ---
+        # --- CATEGORY 2: BOARD & CARD GAMES (WITH BGG SEARCH) ---
         elif category == "Board & Card Games":
             st.subheader("Board & Card Game Entry")
+
+            st.markdown("#### 1. Search BoardGameGeek Database")
+            col_gsearch1, col_gsearch2 = st.columns([3, 1])
+            with col_gsearch1:
+                g_search_q = st.text_input("Search Game Title", placeholder="e.g., Catan, Ticket to Ride, Wingspan")
+            with col_gsearch2:
+                st.write("")
+                st.write("")
+                if st.button("🔍 Search BGG"):
+                    if g_search_q:
+                        with st.spinner(f"Searching BoardGameGeek for '{g_search_q}'..."):
+                            bgg_results = fetch_bgg_game_matches(g_search_q)
+                            if bgg_results:
+                                st.session_state["bgg_search_results"] = bgg_results
+                                st.success(f"Found {len(bgg_results)} game match(es)!")
+                            else:
+                                st.error("No games found on BGG. Enter details manually below.")
+
+            if st.session_state.get("bgg_search_results"):
+                bgg_opts = {f"{g['name']} ({g['year']})": g["id"] for g in st.session_state["bgg_search_results"]}
+                selected_g_label = st.selectbox("Choose game match:", list(bgg_opts.keys()))
+                selected_bgg_id = bgg_opts[selected_g_label]
+
+                if selected_bgg_id and st.button("✅ Accept & Auto-Fill Game Metadata"):
+                    details = fetch_bgg_game_details(selected_bgg_id)
+                    st.session_state["g_title"] = selected_g_label.split(" (")[0]
+                    st.session_state["g_players"] = details.get("Number of Players", "")
+                    st.session_state["g_length"] = details.get("Length of Play", "")
+                    st.session_state["g_age"] = details.get("Age Rating", "")
+                    st.session_state["g_image"] = details.get("Image_Path", "")
+                    st.success("Loaded game metadata into form below!")
+
+            st.markdown("---")
+            st.markdown("#### 2. Verify & Save Entry")
+
             with st.form("game_form", clear_on_submit=True):
-                title = st.text_input("Game Title *")
-                players = st.text_input("Number of Players (e.g., 2-4 Players)")
-                length = st.text_input("Length of Play (e.g., 30-45 min)")
-                age = st.text_input("Age Rating (e.g., 10+)")
+                title = st.text_input("Game Title *", value=st.session_state.get("g_title", ""))
+                players = st.text_input("Number of Players", value=st.session_state.get("g_players", ""))
+                length = st.text_input("Length of Play", value=st.session_state.get("g_length", ""))
+                age = st.text_input("Age Rating", value=st.session_state.get("g_age", ""))
                 style = st.text_input("Style of Game (Board, Card, Dice)")
-                uploaded_image = st.file_uploader("Upload Box Photo", type=["jpg", "png", "jpeg"])
+                box_photo_url = st.text_input("Box Photo URL / Poster Link", value=st.session_state.get("g_image", ""))
+                uploaded_image = st.file_uploader("Or Upload Box Photo File", type=["jpg", "png", "jpeg"])
 
                 if st.form_submit_button("Save Game to Inventory"):
                     if not title:
                         st.error("Game title is required.")
                     else:
-                        image_path = ""
+                        image_path = box_photo_url
                         if uploaded_image:
                             image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
                             with open(image_path, "wb") as f:
@@ -441,6 +537,9 @@ if check_password():
                         push_csv_to_github(file_path, f"Add game '{title}'")
                         st.success(f"Added '{title}' to Games database!")
 
+                        for key in ["g_title", "g_players", "g_length", "g_age", "g_image", "bgg_search_results"]:
+                            st.session_state.pop(key, None)
+
         # --- CATEGORY 3: KITCHEN GEAR ---
         elif category == "Kitchen Gear":
             st.subheader("Kitchen Gear Entry")
@@ -448,13 +547,14 @@ if check_password():
                 title = st.text_input("Name of Item *")
                 eq_type = st.selectbox("Type of Equipment", ["Appliance", "Cookware", "Appliance Accessory", "Utensil"])
                 manual = st.text_input("Instruction Manual Link (URL)")
-                uploaded_image = st.file_uploader("Upload Item Photo", type=["jpg", "png", "jpeg"])
+                image_url = st.text_input("Item Photo Image URL")
+                uploaded_image = st.file_uploader("Or Upload Item Photo File", type=["jpg", "png", "jpeg"])
 
                 if st.form_submit_button("Save Kitchen Gear"):
                     if not title:
                         st.error("Item name is required.")
                     else:
-                        image_path = ""
+                        image_path = image_url
                         if uploaded_image:
                             image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
                             with open(image_path, "wb") as f:
@@ -474,7 +574,7 @@ if check_password():
                         st.success(f"Added '{title}' to Kitchen Gear database!")
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH DYNAMIC TAB-SPECIFIC SORTING OPTIONS
+    # 7. PAGE: BROWSE INVENTORY WITH TAB-SPECIFIC METADATA / IMAGE AUTO-FILL
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -491,7 +591,6 @@ if check_password():
             key="active_category_radio"
         )
 
-        # Map dynamic sorting options based on active category
         if active_category == "Movies & TV":
             sort_options = ["Title", "Year Released", "Rating", "Genre", "Type"]
         elif active_category == "Board & Card Games":
@@ -513,7 +612,7 @@ if check_password():
 
         st.markdown("---")
 
-        def display_inventory_items(df, title_col, details_func, summary_inline_func, file_path, editable_cols, is_movie_tab=False, image_col="Image_Path"):
+        def display_inventory_items(df, title_col, details_func, summary_inline_func, file_path, editable_cols, category_type="movie", image_col="Image_Path"):
             if df.empty:
                 st.info("No items in this category yet.")
                 return
@@ -548,7 +647,7 @@ if check_password():
                             st.write(details_func(row))
 
                             with st.expander(f"✏️ Edit / Delete '{item_id}'"):
-                                render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab)
+                                render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, category_type)
 
             # --- 📋 LIST VIEW: RIGHT EDIT EXPANDER WITH FULL-WIDTH BELOW DRAWER ---
             else:
@@ -586,12 +685,14 @@ if check_password():
                         if st.session_state.get(expander_key, False):
                             st.markdown("---")
                             st.subheader(f"✏️ Editing: {item_id}")
-                            render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab)
+                            render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, category_type)
 
-        def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
-            """Form renderer supporting single edits and collection splitting."""
-            if is_movie_tab and OMDB_API_KEY:
-                st.markdown("##### 🔍 Search Metadata / Split Collection")
+        def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, category_type):
+            """Universal form renderer supporting single edits, metadata search, and collection splitting."""
+            
+            # --- 🎬 MOVIE METADATA SEARCH ---
+            if category_type == "movie" and OMDB_API_KEY:
+                st.markdown("##### 🔍 Search Movie Metadata / Split Collection")
                 col_m1, col_m2 = st.columns([3, 1])
                 with col_m1:
                     edit_search_q = st.text_input("Search Title or Collection Query", value=item_id, key=f"edit_search_q_{file_path}_{idx}")
@@ -679,6 +780,60 @@ if check_password():
 
                 st.markdown("---")
 
+            # --- 🎲 GAME METADATA SEARCH (BGG API) ---
+            elif category_type == "game":
+                st.markdown("##### 🔍 Search BoardGameGeek Box Art & Metadata")
+                col_g1, col_g2 = st.columns([3, 1])
+                with col_g1:
+                    g_query = st.text_input("Game Search Query", value=item_id, key=f"edit_bgg_q_{file_path}_{idx}")
+                with col_g2:
+                    st.write("")
+                    st.write("")
+                    if st.button("Fetch Game Info", key=f"btn_edit_bgg_{file_path}_{idx}"):
+                        bgg_matches = fetch_bgg_game_matches(g_query)
+                        if bgg_matches:
+                            st.session_state[f"edit_bgg_matches_{idx}"] = bgg_matches
+                            st.success(f"Found {len(bgg_matches)} BGG match(es)!")
+                        else:
+                            st.error(f"No BGG entries found for '{g_query}'.")
+
+                if st.session_state.get(f"edit_bgg_matches_{idx}"):
+                    bgg_list = st.session_state[f"edit_bgg_matches_{idx}"]
+                    bgg_opts = {f"{g['name']} ({g['year']})": g["id"] for g in bgg_list}
+                    sel_g_label = st.selectbox("Choose matching game:", list(bgg_opts.keys()), key=f"sel_bgg_{file_path}_{idx}")
+                    sel_bgg_id = bgg_opts[sel_g_label]
+
+                    if sel_bgg_id and st.button("✅ Auto-Fill Box Art & Specs", key=f"btn_apply_bgg_{file_path}_{idx}"):
+                        g_details = fetch_bgg_game_details(sel_bgg_id)
+                        st.session_state[f"edit_{file_path}_{idx}_Title"] = sel_g_label.split(" (")[0]
+                        st.session_state[f"edit_{file_path}_{idx}_Number of Players"] = g_details.get("Number of Players", "")
+                        st.session_state[f"edit_{file_path}_{idx}_Length of Play"] = g_details.get("Length of Play", "")
+                        st.session_state[f"edit_{file_path}_{idx}_Age Rating"] = g_details.get("Age Rating", "")
+                        st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = g_details.get("Image_Path", "")
+                        st.success("Loaded BGG box art and game specs below!")
+                        st.rerun()
+
+                st.markdown("---")
+
+            # --- 🍳 KITCHEN ITEM PHOTO SEARCH ---
+            elif category_type == "kitchen":
+                st.markdown("##### 📷 Quick Product Photo Search")
+                col_k1, col_k2 = st.columns([3, 1])
+                with col_k1:
+                    k_query = st.text_input("Product Search Query", value=item_id, key=f"edit_kitchen_q_{file_path}_{idx}")
+                with col_k2:
+                    st.write("")
+                    st.write("")
+                    if st.button("Suggest Photo", key=f"btn_edit_kitchen_{file_path}_{idx}"):
+                        # Auto-construct public Wikimedia/Unsplash search fallback
+                        encoded_k = urllib.parse.quote_plus(k_query)
+                        suggested_img = f"https://source.unsplash.com/400x300/?{encoded_k},kitchen"
+                        st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = suggested_img
+                        st.success(f"Generated web photo URL for '{k_query}'!")
+                        st.rerun()
+
+                st.markdown("---")
+
             edit_inputs = {}
             for col_name in editable_cols:
                 input_key = f"edit_{file_path}_{idx}_{col_name}"
@@ -697,6 +852,7 @@ if check_password():
                             st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
                         st.session_state.pop(f"edit_matches_{idx}", None)
                         st.session_state.pop(f"edit_unpacked_{idx}", None)
+                        st.session_state.pop(f"edit_bgg_matches_{idx}", None)
                         st.rerun()
 
             with col_btn2:
@@ -707,6 +863,7 @@ if check_password():
                             st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
                         st.session_state.pop(f"edit_matches_{idx}", None)
                         st.session_state.pop(f"edit_unpacked_{idx}", None)
+                        st.session_state.pop(f"edit_bgg_matches_{idx}", None)
                         st.rerun()
 
         # Render Active Category View
@@ -719,11 +876,65 @@ if check_password():
                 lambda r: f"Type: {r.get('Type', '')} | Rating: {r.get('Rating', '')} | Year: {r.get('Year Released', '')} | Genre: {r.get('Genre', '')}",
                 "movies_and_tv_collection.csv",
                 ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"],
-                is_movie_tab=True,
+                category_type="movie",
             )
 
         elif active_category == "Board & Card Games":
             st.subheader("Board & Card Games Collection")
+            
+            # --- BOARD GAME BULK SCAN TOOL ---
+            with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Game Box Art"):
+                missing_games_mask = (
+                    df_games["Image_Path"].isna()
+                    | (df_games["Image_Path"].astype(str).str.strip() == "")
+                )
+                missing_games_df = df_games[missing_games_mask]
+
+                if missing_games_df.empty:
+                    st.success("🎉 All titles in your Board & Card Games database have box art!")
+                else:
+                    st.warning(f"Found {len(missing_games_df)} game(s) missing box art.")
+                    if st.button("🔍 Scan BGG for Missing Box Art"):
+                        game_scan_results = []
+                        progress_bar = st.progress(0)
+
+                        for i, (_, g_row) in enumerate(missing_games_df.iterrows()):
+                            g_title = g_row["Title"]
+                            matches = fetch_bgg_game_matches(g_title)
+                            if matches:
+                                details = fetch_bgg_game_details(matches[0]["id"])
+                                if details.get("Image_Path"):
+                                    game_scan_results.append({
+                                        "Title": g_title,
+                                        "Found_Image": details["Image_Path"],
+                                        "Found_Players": details.get("Number of Players", ""),
+                                        "Found_Length": details.get("Length of Play", ""),
+                                        "Found_Age": details.get("Age Rating", ""),
+                                    })
+                            progress_bar.progress((i + 1) / len(missing_games_df))
+
+                        st.session_state["bulk_game_scan_results"] = game_scan_results
+
+                    if st.session_state.get("bulk_game_scan_results"):
+                        st.markdown("#### Review Found Game Box Art")
+                        if st.button("⚡ Accept All Game Updates"):
+                            updates = st.session_state["bulk_game_scan_results"]
+                            g_df = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+                            for item in updates:
+                                mask = g_df["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
+                                if mask.any():
+                                    idx = g_df[mask].index[0]
+                                    if item["Found_Image"]:
+                                        g_df.at[idx, "Image_Path"] = item["Found_Image"]
+                                    if item["Found_Players"]:
+                                        g_df.at[idx, "Number of Players"] = item["Found_Players"]
+                            g_df.to_csv("board_and_card_games_collection.csv", index=False)
+                            push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
+                            st.session_state.pop("bulk_game_scan_results", None)
+                            st.success("Updated game box art!")
+                            st.rerun()
+
+            st.markdown("---")
             display_inventory_items(
                 df_games,
                 "Title",
@@ -731,6 +942,7 @@ if check_password():
                 lambda r: f"Players: {r.get('Number of Players', '')} | Length: {r.get('Length of Play', '')} | Age: {r.get('Age Rating', '')} | Style: {r.get('Style of Game', '')}",
                 "board_and_card_games_collection.csv",
                 ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"],
+                category_type="game",
             )
 
         elif active_category == "Kitchen Gear":
@@ -742,4 +954,5 @@ if check_password():
                 lambda r: f"Type: {r.get('Type of Equipment', '')} " + (f"| [📄 Manual Link]({r['Instruction Manual Link']})" if pd.notna(r.get("Instruction Manual Link")) and str(r.get("Instruction Manual Link")).startswith("http") else ""),
                 "kitchen_gear_inventory_v2.csv",
                 ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"],
+                category_type="kitchen",
             )
