@@ -14,7 +14,7 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom CSS for compact list items
+# Custom CSS for compact list spacing
 st.markdown(
     """
     <style>
@@ -523,7 +523,7 @@ if check_password():
                         st.success(f"Added '{title}' to Kitchen Gear database!")
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH FULL-WIDTH BELOW-ROW EDIT DRAWER
+    # 7. PAGE: BROWSE INVENTORY WITH RIGHT-ALIGNED EDIT & EXPANDABLE DRAWER
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -635,14 +635,13 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- 📋 LIST VIEW WITH SPACIOUS BELOW-ROW EDIT DRAWER ---
+            # --- 📋 LIST VIEW: RIGHT EDIT EXPANDER OPENING FULL-WIDTH BELOW ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
                     
                     with st.container(border=True):
-                        # Row header: Image + Details inline
-                        c_img, c_info = st.columns([0.4, 8.6], vertical_alignment="center")
+                        c_img, c_info, c_edit = st.columns([0.4, 7.8, 0.8], vertical_alignment="center")
 
                         with c_img:
                             img_val = row.get(image_col, "")
@@ -661,8 +660,19 @@ if check_password():
                                 unsafe_allow_html=True,
                             )
 
-                        # Expander opens up directly BELOW the row across full container width
-                        with st.expander(f"✏️ Edit Item: {item_id}"):
+                        with c_edit:
+                            # State key tracking expander toggle
+                            expander_key = f"expand_edit_{file_path}_{idx}"
+                            if expander_key not in st.session_state:
+                                st.session_state[expander_key] = False
+
+                            if st.button("✏️ Edit", key=f"btn_toggle_edit_{file_path}_{idx}"):
+                                st.session_state[expander_key] = not st.session_state[expander_key]
+
+                        # Full-width workspace container directly below the single row
+                        if st.session_state.get(expander_key, False):
+                            st.markdown("---")
+                            st.subheader(f"✏️ Editing: {item_id}")
                             render_edit_form(
                                 idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                             )
@@ -770,12 +780,14 @@ if check_password():
             with col_btn1:
                 if st.button("💾 Save Changes", key=f"save_{file_path}_{idx}"):
                     if save_edited_row(file_path, item_id, edit_inputs, title_col):
+                        st.session_state[f"expand_edit_{file_path}_{idx}"] = False
                         st.success(f"Saved changes to '{item_id}'!")
                         st.rerun()
 
             with col_btn2:
                 if st.button("🗑️ Delete Item", key=f"del_{file_path}_{idx}"):
                     if save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col):
+                        st.session_state[f"expand_edit_{file_path}_{idx}"] = False
                         st.warning(f"Deleted '{item_id}'.")
                         st.rerun()
 
