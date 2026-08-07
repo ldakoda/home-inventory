@@ -14,19 +14,12 @@ st.set_page_config(
     layout="wide",
 )
 
-# Custom CSS to eliminate excess Streamlit vertical padding in list view
+# Custom CSS for compact list items
 st.markdown(
     """
     <style>
-    /* Reduce container spacing for ultra-compact lists */
     div[data-testid="stVerticalBlock"] > div {
         gap: 0.2rem !important;
-    }
-    .compact-row {
-        display: flex;
-        align-items: center;
-        padding: 2px 0px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
     </style>
     """,
@@ -530,7 +523,7 @@ if check_password():
                         st.success(f"Added '{title}' to Kitchen Gear database!")
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH ULTRA-COMPACT LIST VIEW
+    # 7. PAGE: BROWSE INVENTORY WITH FULL-WIDTH BELOW-ROW EDIT DRAWER
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -642,33 +635,34 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- 📋 ULTRA-COMPACT EXCEL SINGLE-ROW LIST VIEW ---
+            # --- 📋 LIST VIEW WITH SPACIOUS BELOW-ROW EDIT DRAWER ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
                     
-                    # Use minimal column proportions and horizontal alignment
-                    c_img, c_info, c_edit = st.columns([0.4, 7.8, 0.8], vertical_alignment="center")
+                    with st.container(border=True):
+                        # Row header: Image + Details inline
+                        c_img, c_info = st.columns([0.4, 8.6], vertical_alignment="center")
 
-                    with c_img:
-                        img_val = row.get(image_col, "")
-                        if pd.notna(img_val) and str(img_val).strip() != "":
-                            st.image(str(img_val), width=28)
-                        else:
-                            st.caption("📷")
+                        with c_img:
+                            img_val = row.get(image_col, "")
+                            if pd.notna(img_val) and str(img_val).strip() != "":
+                                st.image(str(img_val), width=32)
+                            else:
+                                st.caption("📷")
 
-                    with c_info:
-                        inline_details = summary_inline_func(row)
-                        st.markdown(
-                            f"<div style='margin:0; padding:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>"
-                            f"<strong>{item_id}</strong> &nbsp;|&nbsp; "
-                            f"<span style='color:#a0a0a0; font-size:0.9em;'>{inline_details}</span>"
-                            f"</div>",
-                            unsafe_allow_html=True,
-                        )
+                        with c_info:
+                            inline_details = summary_inline_func(row)
+                            st.markdown(
+                                f"<div style='margin:0; padding:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>"
+                                f"<strong>{item_id}</strong> &nbsp;|&nbsp; "
+                                f"<span style='color:#a0a0a0; font-size:0.9em;'>{inline_details}</span>"
+                                f"</div>",
+                                unsafe_allow_html=True,
+                            )
 
-                    with c_edit:
-                        with st.expander("✏️"):
+                        # Expander opens up directly BELOW the row across full container width
+                        with st.expander(f"✏️ Edit Item: {item_id}"):
                             render_edit_form(
                                 idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                             )
