@@ -147,16 +147,18 @@ CUSTOM_CATEGORIES_FILE = "custom_categories_registry.csv"
 
 def safe_load_csv(file_path, expected_columns):
     if not os.path.exists(file_path):
-        return pd.DataFrame(columns=expected_columns)
+        df = pd.DataFrame(columns=expected_columns)
+        return df.astype(object)
     try:
         df = pd.read_csv(file_path, on_bad_lines="skip")
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
-        return df
+        # Ensure all columns are treated as object/string to avoid pandas dtype assignment errors
+        return df.astype(object)
     except Exception as e:
         st.error(f"Error reading {file_path}: {e}")
-        return pd.DataFrame(columns=expected_columns)
+        return pd.DataFrame(columns=expected_columns).astype(object)
 
 
 def load_custom_categories():
@@ -323,7 +325,7 @@ def fetch_collection_movies(collection_title):
 def save_multiple_movies_to_csv(file_path, movies_list):
     expected_cols = ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"]
     existing_df = safe_load_csv(file_path, expected_cols)
-    new_df = pd.DataFrame(movies_list)
+    new_df = pd.DataFrame(movies_list).astype(object)
     
     existing_titles = set(existing_df["Title"].astype(str).str.lower().str.strip())
     new_df = new_df[~new_df["Title"].astype(str).str.lower().str.strip().isin(existing_titles)]
@@ -339,8 +341,7 @@ def save_multiple_movies_to_csv(file_path, movies_list):
 
 
 def save_edited_row(file_path, original_title_or_name, updated_row_dict, key_col):
-    df = pd.read_csv(file_path, on_bad_lines="skip")
-    df = df.astype(object)
+    df = pd.read_csv(file_path, on_bad_lines="skip").astype(object)
 
     mask = (
         df[key_col]
@@ -432,7 +433,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. ADD NEW ITEM DRAWER (SINGLE ITEM FILE UPLOAD ALLOWED)
+    # 7. ADD NEW ITEM DRAWER
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -619,7 +620,6 @@ if check_password():
     tab_names = ["🌐 All Files (Master)", "🎬 Movies & TV", "🎲 Board & Card Games", "🍳 Kitchen Gear"] + [f"{c['Icon']} {c['Name']}" for c in custom_cats] + ["➕ Add Category"]
     tabs = st.tabs(tab_names)
 
-    # SINGLE ITEM EDIT DRAWER (FILE UPLOAD ALLOWED HERE)
     def render_edit_drawer(unique_key_id, item_id, row, editable_cols, file_path, title_col):
         edit_inputs = {}
         for col_name in editable_cols:
@@ -780,12 +780,12 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH WEB-BASED BULK IMAGE SEARCH
+    # 10. TAB RENDERING WITH TYPE-SAFE WEB IMAGE AUTO-FILL
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
 
-    # MOVIES TAB (BULK OMDb SEARCH)
+    # MOVIES TAB
     with tabs[1]:
         with st.expander("🛠️ Bulk Movie Web Search & Metadata Add"):
             st.write("Bulk search web movie databases for titles or collection packs:")
@@ -800,7 +800,7 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
 
-    # BOARD GAMES TAB (BULK BGG DETAILS WEB SEARCH)
+    # BOARD GAMES TAB
     with tabs[2]:
         with st.expander("🛠️ Bulk Game Details & Box Art Web Scanner"):
             missing_games_mask = (
@@ -840,9 +840,7 @@ if check_password():
                         for item in updates:
                             mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
                             if mask_g.any():
-                                idx_g = g_df_csv[mask_g].index[0]
-                                if item["Found_Image"]:
-                                    g_df_csv.at[idx_g, "Image_Path"] = item["Found_Image"]
+                                g_df_csv.loc[mask_g, "Image_Path"] = item["Found_Image"]
                         g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
                         push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
                         st.session_state.pop("bulk_game_scan_results", None)
@@ -852,7 +850,7 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
-    # KITCHEN GEAR TAB (WEB IMAGE SEARCH)
+    # KITCHEN GEAR TAB (FIXED DTYPE BUG)
     with tabs[3]:
         with st.expander("🛠️ Bulk Web Image Search & Auto-Fill (Kitchen & Decor)"):
             st.write("Automatically search the web for missing images across Kitchen and Decor items:")
@@ -872,8 +870,8 @@ if check_password():
                         k_name = k_row["Name of Item"]
                         mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(k_name).lower().strip()
                         if mask_k.any():
-                            target_idx = k_df_csv[mask_k].index[0]
-                            k_df_csv.at[target_idx, "Image_Path"] = generate_web_image_url(k_name)
+                            # Safely set value using loc with object dtype
+                            k_df_csv.loc[mask_k, "Image_Path"] = str(generate_web_image_url(k_name))
                     k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
                     push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk web kitchen photo update")
                     st.success("Auto-filled missing kitchen item photos via web search!")
@@ -882,7 +880,7 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
-    # DYNAMIC CUSTOM CATEGORIES TABS (GENERIC WEB IMAGE SEARCH)
+    # DYNAMIC CUSTOM CATEGORIES TABS (FIXED DTYPE BUG)
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
             with st.expander(f"🛠️ Bulk Web Image Search for {custom_cat['Name']}"):
@@ -904,8 +902,7 @@ if check_password():
                             item_name_val = c_row[custom_cat["Primary_Col"]]
                             mask_c = c_df_loaded[custom_cat["Primary_Col"]].astype(str).str.lower().str.strip() == str(item_name_val).lower().strip()
                             if mask_c.any():
-                                target_idx = c_df_loaded[mask_c].index[0]
-                                c_df_loaded.at[target_idx, "Image_Path"] = generate_web_image_url(item_name_val)
+                                c_df_loaded.loc[mask_c, "Image_Path"] = str(generate_web_image_url(item_name_val))
 
                         c_df_loaded.to_csv(custom_cat["File"], index=False)
                         push_csv_to_github(custom_cat["File"], f"Bulk web image fill for {custom_cat['Name']}")
