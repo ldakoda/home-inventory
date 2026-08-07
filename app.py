@@ -2,6 +2,7 @@ import os
 import urllib.parse
 import xml.etree.ElementTree as ET
 import difflib
+import base64
 import pandas as pd
 import requests
 import streamlit as st
@@ -84,9 +85,7 @@ def safe_st_image(img_path, width=None, use_container_width=False, default_emoji
         st.write(default_emoji)
         return
 
-    # Check if string is an HTTP/HTTPS web URL
     is_url = path_str.startswith("http://") or path_str.startswith("https://")
-    # Check if string points to an existing local file
     is_local_file = os.path.exists(path_str)
 
     if is_url or is_local_file:
@@ -158,7 +157,7 @@ def generate_web_image_url(query_text):
 
 
 # -----------------------------------------------------------------------------
-# 3. GITHUB SYNC HELPER FUNCTION
+# 3. GITHUB SYNC & REMOTE IMAGE UPLOAD HELPERS
 # -----------------------------------------------------------------------------
 def push_csv_to_github(file_path, commit_message="Update inventory via app"):
     if not GITHUB_TOKEN or not GITHUB_REPO:
@@ -194,6 +193,49 @@ def push_csv_to_github(file_path, commit_message="Update inventory via app"):
     except Exception as e:
         st.error(f"GitHub Sync Error: {e}")
         return False
+
+
+def push_image_to_github(uploaded_file):
+    """Uploads a binary image file to GitHub repo and returns its public raw CDN URL."""
+    filename = "".join(c for c in uploaded_file.name if c.isalnum() or c in "._-")
+    github_path = f"{IMAGE_DIR}/{filename}"
+
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        local_path = os.path.join(IMAGE_DIR, filename)
+        with open(local_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        return local_path
+
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(GITHUB_REPO)
+        file_bytes = uploaded_file.getvalue()
+
+        try:
+            existing_file = repo.get_contents(github_path, ref="main")
+            repo.update_file(
+                path=github_path,
+                message=f"Update image {filename}",
+                content=file_bytes,
+                sha=existing_file.sha,
+                branch="main"
+            )
+        except Exception:
+            repo.create_file(
+                path=github_path,
+                message=f"Upload image {filename}",
+                content=file_bytes,
+                branch="main"
+            )
+
+        raw_url = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{github_path}"
+        return raw_url
+    except Exception as e:
+        st.error(f"Failed to upload image to GitHub: {e}")
+        local_path = os.path.join(IMAGE_DIR, filename)
+        with open(local_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        return local_path
 
 
 # -----------------------------------------------------------------------------
@@ -488,7 +530,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. ADD NEW ITEM DRAWER
+    # 7. ADD NEW ITEM DRAWER (REMOTE GITHUB IMAGE UPLOADS)
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -512,10 +554,7 @@ if check_password():
                         if title:
                             final_img = poster_link
                             if uploaded_image:
-                                local_path = os.path.join(IMAGE_DIR, uploaded_image.name)
-                                with open(local_path, "wb") as f:
-                                    f.write(uploaded_image.getbuffer())
-                                final_img = local_path
+                                final_img = push_image_to_github(uploaded_image)
 
                             new_entry = {"Title": title, "Rating": rating, "Year Released": year, "Length of Movie": length, "Type": m_type, "Genre": genre, "Image_Path": final_img}
                             df = safe_load_csv("movies_and_tv_collection.csv", list(new_entry.keys()))
@@ -537,10 +576,7 @@ if check_password():
                         if title:
                             final_img = box_url
                             if uploaded_image:
-                                local_path = os.path.join(IMAGE_DIR, uploaded_image.name)
-                                with open(local_path, "wb") as f:
-                                    f.write(uploaded_image.getbuffer())
-                                final_img = local_path
+                                final_img = push_image_to_github(uploaded_image)
 
                             new_entry = {"Title": title, "Number of Players": players, "Length of Play": length, "Age Rating": age, "Style of Game": "Board", "Image_Path": final_img}
                             df = safe_load_csv("board_and_card_games_collection.csv", list(new_entry.keys()))
@@ -561,10 +597,7 @@ if check_password():
                         if title:
                             final_img = image_url
                             if uploaded_image:
-                                local_path = os.path.join(IMAGE_DIR, uploaded_image.name)
-                                with open(local_path, "wb") as f:
-                                    f.write(uploaded_image.getbuffer())
-                                final_img = local_path
+                                final_img = push_image_to_github(uploaded_image)
 
                             new_entry = {"Name of Item": title, "Type of Equipment": eq_type, "Instruction Manual Link": manual, "Image_Path": final_img}
                             df = safe_load_csv("kitchen_gear_inventory_v2.csv", list(new_entry.keys()))
@@ -589,10 +622,7 @@ if check_password():
                         if primary_val:
                             final_img = cust_img_url
                             if cust_file:
-                                local_path = os.path.join(IMAGE_DIR, cust_file.name)
-                                with open(local_path, "wb") as f:
-                                    f.write(cust_file.getbuffer())
-                                final_img = local_path
+                                final_img = push_image_to_github(cust_file)
                             
                             custom_data["Image_Path"] = final_img
                             df = safe_load_csv(target_cat["File"], target_cat["Fields"])
@@ -701,10 +731,8 @@ if check_password():
         with col1:
             if st.button("💾 Save Changes", key=f"save_{unique_key_id}"):
                 if uploaded_img_file:
-                    local_img_path = os.path.join(IMAGE_DIR, uploaded_img_file.name)
-                    with open(local_img_path, "wb") as f:
-                        f.write(uploaded_img_file.getbuffer())
-                    edit_inputs["Image_Path"] = local_img_path
+                    remote_img_url = push_image_to_github(uploaded_img_file)
+                    edit_inputs["Image_Path"] = remote_img_url
 
                 if save_edited_row(file_path, item_id, edit_inputs, title_col):
                     st.session_state[f"expand_edit_{unique_key_id}"] = False
@@ -917,7 +945,7 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
-    # KITCHEN GEAR TAB (WITH REVIEW & ACCEPT GALLERY)
+    # KITCHEN GEAR TAB
     with tabs[3]:
         with st.expander("🛠️ Bulk Web Image Search & Review (Kitchen & Decor)"):
             st.write("Search Wikimedia and Wikipedia for authentic product photos across Kitchen and Decor items:")
@@ -985,7 +1013,7 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
-    # DYNAMIC CUSTOM CATEGORIES TABS (WITH REVIEW & ACCEPT GALLERY)
+    # DYNAMIC CUSTOM CATEGORIES TABS
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
             with st.expander(f"🛠️ Bulk Web Image Search & Review for {custom_cat['Name']}"):
