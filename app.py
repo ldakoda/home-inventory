@@ -3,63 +3,50 @@ import pandas as pd
 import requests
 import streamlit as st
 
+# -----------------------------------------------------------------------------
+# 1. PAGE CONFIG & STYLING
+# -----------------------------------------------------------------------------
 st.set_page_config(
-    page_title="Home Inventory System", page_icon="🏠", layout="wide"
+    page_title="Home Inventory System",
+    page_icon="🏠",
+    layout="wide",
 )
 
-# Directory to store uploaded item images
+# Directory for storing user-uploaded images locally
 IMAGE_DIR = "uploaded_images"
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
+# Fetch OMDb API Key securely from environment / GitHub Secrets
+OMDB_API_KEY = os.getenv("OMDB_KEY", "")
+
 # -----------------------------------------------------------------------------
-# 1. AUTHENTICATION & METADATA HELPER
+# 2. AUTHENTICATION
 # -----------------------------------------------------------------------------
-PIN_CODE = "1234"
+PIN_CODE = "1234"  # Change this to your preferred PIN or invite code
 
 
 def check_password():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
+
     if not st.session_state["authenticated"]:
         st.title("🏠 Home Inventory Access")
         input_pin = st.text_input(
-            "Enter Invite Code / PIN:", type="password", key="pin"
+            "Enter Invite Code / PIN:", type="password", key="pin_input"
         )
         if st.button("Login"):
             if input_pin == PIN_CODE:
                 st.session_state["authenticated"] = True
                 st.rerun()
             else:
-                st.error("Invalid code.")
+                st.error("Invalid invite code.")
         return False
     return True
 
 
-def fetch_movie_omdb(title, api_key="trilogy"):
-    """Fetches movie metadata and poster from OMDb API."""
-    try:
-        url = f"http://www.omdbapi.com/?t={title}&apikey={api_key}"
-        res = requests.get(url, timeout=5).json()
-        if res.get("Response") == "True":
-            return {
-                "title": res.get("Title", title),
-                "year": res.get("Year", ""),
-                "rating": res.get("Rated", "N/A"),
-                "length": res.get("Runtime", "N/A"),
-                "genre": res.get("Genre", "N/A"),
-                "type": res.get("Type", "movie").capitalize(),
-                "poster": (
-                    res.get("Poster") if res.get("Poster") != "N/A" else None
-                ),
-            }
-    except Exception:
-        pass
-    return None
-
-
 if check_password():
     # -----------------------------------------------------------------------------
-    # 2. NAVIGATION SIDEBAR
+    # 3. NAVIGATION & LOGOUT
     # -----------------------------------------------------------------------------
     st.sidebar.title("Navigation")
     app_mode = st.sidebar.radio(
@@ -71,7 +58,7 @@ if check_password():
         st.rerun()
 
     # -----------------------------------------------------------------------------
-    # 3. PAGE: ADD NEW ITEM (CATEGORY-SPECIFIC + AUTO-FILL + IMAGE UPLOAD)
+    # 4. PAGE: ADD NEW ITEM (CATEGORY-SPECIFIC + AUTO-FILL + IMAGES)
     # -----------------------------------------------------------------------------
     if app_mode == "➕ Add New Item":
         st.title("➕ Add New Inventory Item")
@@ -81,9 +68,14 @@ if check_password():
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"],
         )
 
-        # ------------------- CATEGORY 1: MOVIES & TV -------------------
+        # --- CATEGORY 1: MOVIES & TV ---
         if category == "Movies & TV":
             st.subheader("Movie / TV Show Entry")
+
+            if not OMDB_API_KEY:
+                st.warning(
+                    "⚠️ `OMDB_KEY` environment secret is not set. You can still manually enter movie details below."
+                )
 
             # Metadata Auto-Fill Section
             col_search1, col_search2 = st.columns([3, 1])
@@ -97,24 +89,66 @@ if check_password():
                 st.write("")
                 if st.button("🔍 Auto-Fill Details"):
                     if search_title:
-                        meta = fetch_movie_omdb(search_title)
-                        if meta:
-                            st.session_state["m_title"] = meta["title"]
-                            st.session_state["m_year"] = meta["year"]
-                            st.session_state["m_rating"] = meta["rating"]
-                            st.session_state["m_length"] = meta["length"]
-                            st.session_state["m_type"] = meta["type"]
-                            st.session_state["m_genre"] = meta["genre"]
-                            st.session_state["m_poster"] = meta["poster"]
-                            st.success(
-                                f"Metadata found for '{meta['title']}'!"
+                        if not OMDB_API_KEY:
+                            st.error(
+                                "Missing OMDb API Key in environment secrets."
                             )
                         else:
-                            st.warning("No movie metadata found.")
+                            with st.spinner(f"Searching for '{search_title}'..."):
+                                try:
+                                    url = f"http://www.omdbapi.com/?t={search_title}&apikey={OMDB_API_KEY}"
+                                    res = requests.get(url, timeout=5).json()
+
+                                    if res.get("Response") == "True":
+                                        st.session_state["m_title"] = res.get(
+                                            "Title", ""
+                                        )
+                                        st.session_state["m_year"] = res.get(
+                                            "Year", ""
+                                        )
+                                        st.session_state["m_rating"] = res.get(
+                                            "Rated", ""
+                                        )
+                                        st.session_state["m_length"] = res.get(
+                                            "Runtime", ""
+                                        )
+                                        st.session_state["m_type"] = res.get(
+                                            "Type", "movie"
+                                        ).capitalize()
+                                        st.session_state["m_genre"] = res.get(
+                                            "Genre", ""
+                                        )
+
+                                        poster_url = res.get("Poster", "")
+                                        if (
+                                            poster_url
+                                            and poster_url != "N/A"
+                                        ):
+                                            st.session_state["m_poster"] = (
+                                                poster_url
+                                            )
+                                        else:
+                                            st.session_state["m_poster"] = ""
+
+                                        st.success(
+                                            f"Found metadata for '{res.get('Title')}'!"
+                                        )
+                                    else:
+                                        st.error("No movie found with that title.")
+                                except Exception as e:
+                                    st.error(f"Error fetching metadata: {e}")
+
+            # Preview poster if found
+            if st.session_state.get("m_poster"):
+                st.image(
+                    st.session_state["m_poster"],
+                    caption="Poster Preview",
+                    width=120,
+                )
 
             with st.form("movie_form", clear_on_submit=True):
                 title = st.text_input(
-                    "Title", value=st.session_state.get("m_title", "")
+                    "Title *", value=st.session_state.get("m_title", "")
                 )
                 rating = st.text_input(
                     "Rating (PG, PG-13, R)",
@@ -139,49 +173,68 @@ if check_password():
                 genre = st.text_input(
                     "Genre", value=st.session_state.get("m_genre", "")
                 )
+                poster_link = st.text_input(
+                    "Poster / Image URL",
+                    value=st.session_state.get("m_poster", ""),
+                )
 
                 uploaded_image = st.file_uploader(
-                    "Upload Custom Image/Poster", type=["jpg", "png", "jpeg"]
+                    "Or Upload Custom Image File", type=["jpg", "png", "jpeg"]
                 )
 
                 if st.form_submit_button("Save Movie to Inventory"):
-                    image_path = ""
-                    if uploaded_image:
-                        image_path = os.path.join(
-                            IMAGE_DIR, uploaded_image.name
+                    if not title:
+                        st.error("Title is required.")
+                    else:
+                        image_path = poster_link
+                        if uploaded_image:
+                            image_path = os.path.join(
+                                IMAGE_DIR, uploaded_image.name
+                            )
+                            with open(image_path, "wb") as f:
+                                f.write(uploaded_image.getbuffer())
+
+                        new_data = pd.DataFrame(
+                            [
+                                {
+                                    "Title": title,
+                                    "Rating": rating,
+                                    "Year Released": year,
+                                    "Length of Movie": length,
+                                    "Type": m_type,
+                                    "Genre": genre,
+                                    "Image_Path": image_path,
+                                }
+                            ]
                         )
-                        with open(image_path, "wb") as f:
-                            f.write(uploaded_image.getbuffer())
-                    elif st.session_state.get("m_poster"):
-                        image_path = st.session_state.get("m_poster")
+                        file_path = "movies_and_tv_collection.csv"
+                        new_data.to_csv(
+                            file_path,
+                            mode="a",
+                            header=not os.path.exists(file_path),
+                            index=False,
+                        )
+                        st.success(
+                            f"Added '{title}' to Movies & TV database!"
+                        )
 
-                    new_data = pd.DataFrame(
-                        [
-                            {
-                                "Title": title,
-                                "Rating": rating,
-                                "Year Released": year,
-                                "Length of Movie": length,
-                                "Type": m_type,
-                                "Genre": genre,
-                                "Image_Path": image_path,
-                            }
-                        ]
-                    )
-                    file_path = "movies_and_tv_collection.csv"
-                    new_data.to_csv(
-                        file_path,
-                        mode="a",
-                        header=not os.path.exists(file_path),
-                        index=False,
-                    )
-                    st.success(f"Added '{title}' to Movies & TV database!")
+                        # Clear session state
+                        for key in [
+                            "m_title",
+                            "m_year",
+                            "m_rating",
+                            "m_length",
+                            "m_type",
+                            "m_genre",
+                            "m_poster",
+                        ]:
+                            st.session_state.pop(key, None)
 
-        # ------------------- CATEGORY 2: BOARD & CARD GAMES -------------------
+        # --- CATEGORY 2: BOARD & CARD GAMES ---
         elif category == "Board & Card Games":
             st.subheader("Board & Card Game Entry")
             with st.form("game_form", clear_on_submit=True):
-                title = st.text_input("Game Title")
+                title = st.text_input("Game Title *")
                 players = st.text_input(
                     "Number of Players (e.g., 2-4 Players)"
                 )
@@ -193,40 +246,43 @@ if check_password():
                 )
 
                 if st.form_submit_button("Save Game to Inventory"):
-                    image_path = ""
-                    if uploaded_image:
-                        image_path = os.path.join(
-                            IMAGE_DIR, uploaded_image.name
+                    if not title:
+                        st.error("Game title is required.")
+                    else:
+                        image_path = ""
+                        if uploaded_image:
+                            image_path = os.path.join(
+                                IMAGE_DIR, uploaded_image.name
+                            )
+                            with open(image_path, "wb") as f:
+                                f.write(uploaded_image.getbuffer())
+
+                        new_data = pd.DataFrame(
+                            [
+                                {
+                                    "Title": title,
+                                    "Number of Players": players,
+                                    "Length of Play": length,
+                                    "Age Rating": age,
+                                    "Style of Game": style,
+                                    "Image_Path": image_path,
+                                }
+                            ]
                         )
-                        with open(image_path, "wb") as f:
-                            f.write(uploaded_image.getbuffer())
+                        file_path = "board_and_card_games_collection.csv"
+                        new_data.to_csv(
+                            file_path,
+                            mode="a",
+                            header=not os.path.exists(file_path),
+                            index=False,
+                        )
+                        st.success(f"Added '{title}' to Games database!")
 
-                    new_data = pd.DataFrame(
-                        [
-                            {
-                                "Title": title,
-                                "Number of Players": players,
-                                "Length of Play": length,
-                                "Age Rating": age,
-                                "Style of Game": style,
-                                "Image_Path": image_path,
-                            }
-                        ]
-                    )
-                    file_path = "board_and_card_games_collection.csv"
-                    new_data.to_csv(
-                        file_path,
-                        mode="a",
-                        header=not os.path.exists(file_path),
-                        index=False,
-                    )
-                    st.success(f"Added '{title}' to Games database!")
-
-        # ------------------- CATEGORY 3: KITCHEN GEAR -------------------
+        # --- CATEGORY 3: KITCHEN GEAR ---
         elif category == "Kitchen Gear":
             st.subheader("Kitchen Gear Entry")
             with st.form("kitchen_form", clear_on_submit=True):
-                title = st.text_input("Name of Item")
+                title = st.text_input("Name of Item *")
                 eq_type = st.selectbox(
                     "Type of Equipment",
                     ["Appliance", "Cookware", "Appliance Accessory", "Utensil"],
@@ -237,67 +293,96 @@ if check_password():
                 )
 
                 if st.form_submit_button("Save Kitchen Gear"):
-                    image_path = ""
-                    if uploaded_image:
-                        image_path = os.path.join(
-                            IMAGE_DIR, uploaded_image.name
-                        )
-                        with open(image_path, "wb") as f:
-                            f.write(uploaded_image.getbuffer())
+                    if not title:
+                        st.error("Item name is required.")
+                    else:
+                        image_path = ""
+                        if uploaded_image:
+                            image_path = os.path.join(
+                                IMAGE_DIR, uploaded_image.name
+                            )
+                            with open(image_path, "wb") as f:
+                                f.write(uploaded_image.getbuffer())
 
-                    new_data = pd.DataFrame(
-                        [
-                            {
-                                "Name of Item": title,
-                                "Type of Equipment": eq_type,
-                                "Instruction Manual Link": manual,
-                                "Image_Path": image_path,
-                            }
-                        ]
-                    )
-                    file_path = "kitchen_gear_inventory_v2.csv"
-                    new_data.to_csv(
-                        file_path,
-                        mode="a",
-                        header=not os.path.exists(file_path),
-                        index=False,
-                    )
-                    st.success(f"Added '{title}' to Kitchen Gear database!")
+                        new_data = pd.DataFrame(
+                            [
+                                {
+                                    "Name of Item": title,
+                                    "Type of Equipment": eq_type,
+                                    "Instruction Manual Link": manual,
+                                    "Image_Path": image_path,
+                                }
+                            ]
+                        )
+                        file_path = "kitchen_gear_inventory_v2.csv"
+                        new_data.to_csv(
+                            file_path,
+                            mode="a",
+                            header=not os.path.exists(file_path),
+                            index=False,
+                        )
+                        st.success(
+                            f"Added '{title}' to Kitchen Gear database!"
+                        )
 
     # -----------------------------------------------------------------------------
-    # 4. PAGE: BROWSE INVENTORY WITH IMAGES
+    # 5. PAGE: BROWSE INVENTORY WITH IMAGES & CARDS
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
 
-        # Load CSV data
-        df_movies = pd.read_csv("movies_and_tv_collection.csv")
-        df_games = pd.read_csv("board_and_card_games_collection.csv")
-        df_kitchen = pd.read_csv("kitchen_gear_inventory_v2.csv")
+        # Load existing datasets safely
+        df_movies = (
+            pd.read_csv("movies_and_tv_collection.csv")
+            if os.path.exists("movies_and_tv_collection.csv")
+            else pd.DataFrame()
+        )
+        df_games = (
+            pd.read_csv("board_and_card_games_collection.csv")
+            if os.path.exists("board_and_card_games_collection.csv")
+            else pd.DataFrame()
+        )
+        df_kitchen = (
+            pd.read_csv("kitchen_gear_inventory_v2.csv")
+            if os.path.exists("kitchen_gear_inventory_v2.csv")
+            else pd.DataFrame()
+        )
 
-        search_query = st.text_input("🔍 Search items across all categories...")
+        search_query = st.text_input("🔍 Search items across categories...")
 
         tab_movies, tab_games, tab_kitchen = st.tabs(
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
         )
 
-        def display_cards(df, title_col, details_func, image_col="Image_Path"):
+        def display_cards(
+            df, title_col, details_func, image_col="Image_Path"
+        ):
+            if df.empty:
+                st.info("No items in this category yet.")
+                return
+
             if search_query:
-                df = df[
-                    df[title_col].astype(str).str.contains(search_query, case=False)
-                ]
+                mask = (
+                    df[title_col]
+                    .astype(str)
+                    .str.contains(search_query, case=False)
+                )
+                df = df[mask]
+
+            if df.empty:
+                st.info("No items matching your search.")
+                return
 
             cols = st.columns(3)
             for idx, row in df.reset_index(drop=True).iterrows():
                 col = cols[idx % 3]
                 with col:
                     with st.container(border=True):
-                        # Display Image if available
                         img_val = row.get(image_col, "")
                         if pd.notna(img_val) and str(img_val).strip() != "":
                             st.image(str(img_val), use_container_width=True)
                         else:
-                            st.caption("📷 No image uploaded")
+                            st.caption("📷 No image available")
 
                         st.subheader(row[title_col])
                         st.write(details_func(row))
@@ -306,14 +391,16 @@ if check_password():
             display_cards(
                 df_movies,
                 "Title",
-                lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
+                lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n"
+                f"**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
             )
 
         with tab_games:
             display_cards(
                 df_games,
                 "Title",
-                lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
+                lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n"
+                f"**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
             )
 
         with tab_kitchen:
