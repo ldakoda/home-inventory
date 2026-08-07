@@ -20,7 +20,24 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 OMDB_API_KEY = os.getenv("OMDB_KEY", "")
 
 # -----------------------------------------------------------------------------
-# 2. AUTHENTICATION
+# 2. HELPER FUNCTIONS FOR RESILIENT CSV LOADING
+# -----------------------------------------------------------------------------
+def safe_load_csv(file_path, expected_columns):
+    """Safely loads CSV files without crashing on malformed lines."""
+    if not os.path.exists(file_path):
+        return pd.DataFrame(columns=expected_columns)
+    try:
+        df = pd.read_csv(file_path, on_bad_lines="skip")
+        for col in expected_columns:
+            if col not in df.columns:
+                df[col] = ""
+        return df
+    except Exception as e:
+        st.error(f"Error reading {file_path}: {e}")
+        return pd.DataFrame(columns=expected_columns)
+
+# -----------------------------------------------------------------------------
+# 3. AUTHENTICATION
 # -----------------------------------------------------------------------------
 PIN_CODE = "1234"  # Change this to your preferred PIN or invite code
 
@@ -46,7 +63,7 @@ def check_password():
 
 if check_password():
     # -----------------------------------------------------------------------------
-    # 3. NAVIGATION & LOGOUT
+    # 4. NAVIGATION & LOGOUT
     # -----------------------------------------------------------------------------
     st.sidebar.title("Navigation")
     app_mode = st.sidebar.radio(
@@ -58,7 +75,7 @@ if check_password():
         st.rerun()
 
     # -----------------------------------------------------------------------------
-    # 4. PAGE: ADD NEW ITEM
+    # 5. PAGE: ADD NEW ITEM
     # -----------------------------------------------------------------------------
     if app_mode == "➕ Add New Item":
         st.title("➕ Add New Inventory Item")
@@ -74,7 +91,7 @@ if check_password():
 
             if not OMDB_API_KEY:
                 st.warning(
-                    "⚠️ `OMDB_KEY` environment secret is not set. You can still manually enter movie details below."
+                    "⚠️ `OMDB_KEY` environment secret is not set. You can manually enter movie details below."
                 )
 
             # --- SEARCH & SELECT SECTION ---
@@ -97,7 +114,7 @@ if check_password():
                 else:
                     with st.spinner(f"Searching for '{search_title}'..."):
                         try:
-                            # Use OMDb Search Endpoint (?s=)
+                            # OMDb Search Endpoint (?s=)
                             url = f"http://www.omdbapi.com/?s={search_title}&apikey={OMDB_API_KEY}"
                             res = requests.get(url, timeout=5).json()
 
@@ -116,7 +133,7 @@ if check_password():
                         except Exception as e:
                             st.error(f"Error fetching search results: {e}")
 
-            # Display Search Results Dropdown & Selection Card
+            # Display Search Results Dropdown & Selection Preview
             if st.session_state.get("search_results"):
                 st.markdown("---")
                 st.markdown("#### 2. Select the Correct Match")
@@ -376,25 +393,45 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 5. PAGE: BROWSE INVENTORY
+    # 6. PAGE: BROWSE INVENTORY
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
 
-        df_movies = (
-            pd.read_csv("movies_and_tv_collection.csv")
-            if os.path.exists("movies_and_tv_collection.csv")
-            else pd.DataFrame()
+        # Safely load CSV files
+        df_movies = safe_load_csv(
+            "movies_and_tv_collection.csv",
+            [
+                "Title",
+                "Rating",
+                "Year Released",
+                "Length of Movie",
+                "Type",
+                "Genre",
+                "Image_Path",
+            ],
         )
-        df_games = (
-            pd.read_csv("board_and_card_games_collection.csv")
-            if os.path.exists("board_and_card_games_collection.csv")
-            else pd.DataFrame()
+
+        df_games = safe_load_csv(
+            "board_and_card_games_collection.csv",
+            [
+                "Title",
+                "Number of Players",
+                "Length of Play",
+                "Age Rating",
+                "Style of Game",
+                "Image_Path",
+            ],
         )
-        df_kitchen = (
-            pd.read_csv("kitchen_gear_inventory_v2.csv")
-            if os.path.exists("kitchen_gear_inventory_v2.csv")
-            else pd.DataFrame()
+
+        df_kitchen = safe_load_csv(
+            "kitchen_gear_inventory_v2.csv",
+            [
+                "Name of Item",
+                "Type of Equipment",
+                "Instruction Manual Link",
+                "Image_Path",
+            ],
         )
 
         search_query = st.text_input("🔍 Search items across categories...")
