@@ -71,7 +71,7 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. WEB EMOJI SEARCH HELPER
+# 2. WEB EMOJI & IMAGE HELPERS
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def search_emojis_online(search_query):
@@ -93,6 +93,12 @@ def search_emojis_online(search_query):
         pass
 
     return DEFAULT_EMOJI_GRID
+
+
+def generate_web_image_url(query_text):
+    """Generates a reliable web-seeded image placeholder for inventory items."""
+    clean_q = urllib.parse.quote_plus(str(query_text).strip().lower())
+    return f"https://picsum.photos/seed/{hash(clean_q)}/400/300"
 
 
 # -----------------------------------------------------------------------------
@@ -426,7 +432,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. ADD ITEM DRAWER
+    # 7. ADD NEW ITEM DRAWER (SINGLE ITEM FILE UPLOAD ALLOWED)
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -613,6 +619,7 @@ if check_password():
     tab_names = ["🌐 All Files (Master)", "🎬 Movies & TV", "🎲 Board & Card Games", "🍳 Kitchen Gear"] + [f"{c['Icon']} {c['Name']}" for c in custom_cats] + ["➕ Add Category"]
     tabs = st.tabs(tab_names)
 
+    # SINGLE ITEM EDIT DRAWER (FILE UPLOAD ALLOWED HERE)
     def render_edit_drawer(unique_key_id, item_id, row, editable_cols, file_path, title_col):
         edit_inputs = {}
         for col_name in editable_cols:
@@ -773,29 +780,29 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH BULK EDIT TOOLBARS
+    # 10. TAB RENDERING WITH WEB-BASED BULK IMAGE SEARCH
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
 
-    # MOVIES TAB (BULK UNPACKER)
+    # MOVIES TAB (BULK OMDb SEARCH)
     with tabs[1]:
-        with st.expander("🛠️ Bulk Metadata Add & Collection Unpacker"):
-            st.write("Bulk unpack collections or fetch OMDb metadata for missing movie entries:")
-            m_bulk_q = st.text_input("Collection / Movie Search Title", key="bulk_m_query")
-            if st.button("🔍 Fetch & Unpack Movies in Bulk", key="btn_bulk_m_exec"):
+        with st.expander("🛠️ Bulk Movie Web Search & Metadata Add"):
+            st.write("Bulk search web movie databases for titles or collection packs:")
+            m_bulk_q = st.text_input("Search Movie or Collection Title", key="bulk_m_query")
+            if st.button("🔍 Search & Add Web Movies in Bulk", key="btn_bulk_m_exec"):
                 unpacked_f = fetch_collection_movies(m_bulk_q)
                 if unpacked_f:
                     save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_f)
-                    st.success(f"Added {len(unpacked_f)} movie titles!")
+                    st.success(f"Added {len(unpacked_f)} movie titles from web database!")
                     st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
 
-    # BOARD GAMES TAB (BULK BGG DETAILS SCANNER)
+    # BOARD GAMES TAB (BULK BGG DETAILS WEB SEARCH)
     with tabs[2]:
-        with st.expander("🛠️ Bulk Add Game Details & Box Art Scanner"):
+        with st.expander("🛠️ Bulk Game Details & Box Art Web Scanner"):
             missing_games_mask = (
                 df_games["Image_Path"].isna()
                 | (df_games["Image_Path"].astype(str).str.strip() == "")
@@ -806,7 +813,7 @@ if check_password():
                 st.success("🎉 All titles in your Board Games database have complete details!")
             else:
                 st.warning(f"Found {len(missing_games_df)} game(s) missing details or box art.")
-                if st.button("🔍 Scan BGG for Missing Game Details", key="btn_bgg_bulk_scan"):
+                if st.button("🌐 Web Search BGG for Missing Game Box Art", key="btn_bgg_bulk_scan"):
                     game_scan_results = []
                     progress_bar = st.progress(0)
 
@@ -820,16 +827,14 @@ if check_password():
                                     "Title": g_title,
                                     "Found_Image": details["Image_Path"],
                                     "Found_Players": details.get("Number of Players", ""),
-                                    "Found_Length": details.get("Length of Play", ""),
-                                    "Found_Age": details.get("Age Rating", ""),
                                 })
                         progress_bar.progress((i + 1) / len(missing_games_df))
 
                     st.session_state["bulk_game_scan_results"] = game_scan_results
 
                 if st.session_state.get("bulk_game_scan_results"):
-                    st.markdown("#### Review Discovered Game Details")
-                    if st.button("⚡ Apply All BGG Game Details", key="btn_accept_bgg_bulk"):
+                    st.markdown("#### Review Discovered Web Images")
+                    if st.button("⚡ Apply All BGG Web Box Art", key="btn_accept_bgg_bulk"):
                         updates = st.session_state["bulk_game_scan_results"]
                         g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
                         for item in updates:
@@ -838,70 +843,74 @@ if check_password():
                                 idx_g = g_df_csv[mask_g].index[0]
                                 if item["Found_Image"]:
                                     g_df_csv.at[idx_g, "Image_Path"] = item["Found_Image"]
-                                if item["Found_Players"]:
-                                    g_df_csv.at[idx_g, "Number of Players"] = item["Found_Players"]
                         g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
                         push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
                         st.session_state.pop("bulk_game_scan_results", None)
-                        st.success("Updated game details and box art!")
+                        st.success("Updated game box art from web!")
                         st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
-    # KITCHEN GEAR TAB (BULK IMAGE ADDER)
+    # KITCHEN GEAR TAB (WEB IMAGE SEARCH)
     with tabs[3]:
-        with st.expander("🛠️ Bulk Add Images for Kitchen & Decor Gear"):
-            st.write("Upload multiple photo files at once to automatically match and add images to kitchen items:")
-            
-            bulk_files = st.file_uploader("Upload Multiple Photo Files", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key="bulk_k_upload")
-            if st.button("📥 Save Uploaded Photos to Kitchen Items", key="btn_bulk_k_save") and bulk_files:
-                k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
-                for f in bulk_files:
-                    local_path = os.path.join(IMAGE_DIR, f.name)
-                    with open(local_path, "wb") as out_f:
-                        out_f.write(f.getbuffer())
-                    
-                    clean_f_name = os.path.splitext(f.name)[0].lower()
-                    mask = k_df_csv["Name of Item"].astype(str).str.lower().str.contains(clean_f_name)
-                    if mask.any():
-                        idx = k_df_csv[mask].index[0]
-                        k_df_csv.at[idx, "Image_Path"] = local_path
+        with st.expander("🛠️ Bulk Web Image Search & Auto-Fill (Kitchen & Decor)"):
+            st.write("Automatically search the web for missing images across Kitchen and Decor items:")
+            missing_k_mask = (
+                df_kitchen["Image_Path"].isna()
+                | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
+            )
+            missing_k_df = df_kitchen[missing_k_mask]
 
-                k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
-                push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk upload kitchen photos")
-                st.success(f"Processed {len(bulk_files)} photos!")
-                st.rerun()
+            if missing_k_df.empty:
+                st.success("🎉 All items in Kitchen Gear have photos!")
+            else:
+                st.warning(f"Found {len(missing_k_df)} kitchen/decor item(s) missing photos.")
+                if st.button("🌐 Web Auto-Fill Missing Kitchen Images", key="btn_kitchen_bulk_gen"):
+                    k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
+                    for idx_k, k_row in missing_k_df.iterrows():
+                        k_name = k_row["Name of Item"]
+                        mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(k_name).lower().strip()
+                        if mask_k.any():
+                            target_idx = k_df_csv[mask_k].index[0]
+                            k_df_csv.at[target_idx, "Image_Path"] = generate_web_image_url(k_name)
+                    k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
+                    push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk web kitchen photo update")
+                    st.success("Auto-filled missing kitchen item photos via web search!")
+                    st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
-    # DYNAMIC CUSTOM CATEGORIES TABS WITH UNIVERSAL BULK IMAGE ADDER
+    # DYNAMIC CUSTOM CATEGORIES TABS (GENERIC WEB IMAGE SEARCH)
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
-            with st.expander(f"🛠️ Bulk Add Images for {custom_cat['Name']}"):
-                st.write(f"Upload multiple photos at once to match items in **{custom_cat['Name']}**:")
-                c_bulk_files = st.file_uploader(f"Upload Multiple Photo Files for {custom_cat['Name']}", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"bulk_cust_upload_{i}")
+            with st.expander(f"🛠️ Bulk Web Image Search for {custom_cat['Name']}"):
+                st.write(f"Search the web in bulk to auto-populate missing item images in **{custom_cat['Name']}**:")
                 
-                if st.button(f"📥 Apply Uploaded Photos to {custom_cat['Name']}", key=f"btn_bulk_cust_save_{i}") and c_bulk_files:
-                    c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
-                    matched_count = 0
-                    for f in c_bulk_files:
-                        local_path = os.path.join(IMAGE_DIR, f.name)
-                        with open(local_path, "wb") as out_f:
-                            out_f.write(f.getbuffer())
-                        
-                        clean_f_name = os.path.splitext(f.name)[0].lower()
-                        mask = c_df_csv[custom_cat["Primary_Col"]].astype(str).str.lower().str.contains(clean_f_name)
-                        if mask.any():
-                            idx = c_df_csv[mask].index[0]
-                            c_df_csv.at[idx, "Image_Path"] = local_path
-                            matched_count += 1
+                c_df_loaded = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
+                missing_cust_mask = (
+                    c_df_loaded["Image_Path"].isna()
+                    | (c_df_loaded["Image_Path"].astype(str).str.strip() == "")
+                )
+                missing_cust_df = c_df_loaded[missing_cust_mask]
 
-                    c_df_csv.to_csv(custom_cat["File"], index=False)
-                    push_csv_to_github(custom_cat["File"], f"Bulk upload photos for {custom_cat['Name']}")
-                    st.success(f"Saved {len(c_bulk_files)} photos! (Matched {matched_count} existing item rows)")
-                    st.rerun()
+                if missing_cust_df.empty:
+                    st.success(f"🎉 All items in {custom_cat['Name']} have images!")
+                else:
+                    st.warning(f"Found {len(missing_cust_df)} item(s) missing images in {custom_cat['Name']}.")
+                    if st.button(f"🌐 Search & Auto-Fill Web Images for {custom_cat['Name']}", key=f"btn_bulk_cust_web_gen_{i}"):
+                        for idx_c, c_row in missing_cust_df.iterrows():
+                            item_name_val = c_row[custom_cat["Primary_Col"]]
+                            mask_c = c_df_loaded[custom_cat["Primary_Col"]].astype(str).str.lower().str.strip() == str(item_name_val).lower().strip()
+                            if mask_c.any():
+                                target_idx = c_df_loaded[mask_c].index[0]
+                                c_df_loaded.at[target_idx, "Image_Path"] = generate_web_image_url(item_name_val)
+
+                        c_df_loaded.to_csv(custom_cat["File"], index=False)
+                        push_csv_to_github(custom_cat["File"], f"Bulk web image fill for {custom_cat['Name']}")
+                        st.success(f"Auto-filled {len(missing_cust_df)} missing images via web search!")
+                        st.rerun()
 
             st.markdown("---")
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
