@@ -19,13 +19,11 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* Remove top margin/padding */
     div[data-testid="stVerticalBlock"] > div {
         gap: 0.3rem !important;
     }
     [data-testid="stSidebarNav"] {display: none;}
 
-    /* Finder Table Header Styling */
     .finder-header-btn button {
         background-color: transparent !important;
         border: none !important;
@@ -42,7 +40,6 @@ st.markdown(
         border-radius: 4px !important;
     }
 
-    /* Row Hover and Striping */
     .finder-row {
         padding: 6px 12px;
         border-bottom: 1px solid #f0f0f0;
@@ -414,9 +411,18 @@ if check_password():
                     eq_type = st.selectbox("Type of Equipment", ["Appliance", "Cookware", "Utensil"])
                     manual = st.text_input("Manual Link URL")
                     image_url = st.text_input("Photo Image URL")
+                    uploaded_image = st.file_uploader("Or Upload Custom Item Photo File", type=["jpg", "png", "jpeg"])
+
                     if st.form_submit_button("Save Kitchen Item"):
                         if title:
-                            new_entry = {"Name of Item": title, "Type of Equipment": eq_type, "Instruction Manual Link": manual, "Image_Path": image_url}
+                            final_img = image_url
+                            if uploaded_image:
+                                local_path = os.path.join(IMAGE_DIR, uploaded_image.name)
+                                with open(local_path, "wb") as f:
+                                    f.write(uploaded_image.getbuffer())
+                                final_img = local_path
+
+                            new_entry = {"Name of Item": title, "Type of Equipment": eq_type, "Instruction Manual Link": manual, "Image_Path": final_img}
                             df = safe_load_csv("kitchen_gear_inventory_v2.csv", list(new_entry.keys()))
                             pd.concat([df, pd.DataFrame([new_entry])], ignore_index=True).to_csv("kitchen_gear_inventory_v2.csv", index=False)
                             push_csv_to_github("kitchen_gear_inventory_v2.csv", f"Add kitchen gear '{title}'")
@@ -496,12 +502,21 @@ if check_password():
                 st.session_state[input_key] = str(row.get(col_name, ""))
             edit_inputs[col_name] = st.text_input(f"{col_name}", key=input_key)
 
+        uploaded_img_file = st.file_uploader(f"Upload Image for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
+
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Changes", key=f"save_{unique_key_id}"):
+                if uploaded_img_file:
+                    local_img_path = os.path.join(IMAGE_DIR, uploaded_img_file.name)
+                    with open(local_img_path, "wb") as f:
+                        f.write(uploaded_img_file.getbuffer())
+                    edit_inputs["Image_Path"] = local_img_path
+
                 if save_edited_row(file_path, item_id, edit_inputs, title_col):
                     st.session_state[f"expand_edit_{unique_key_id}"] = False
                     st.rerun()
+
         with col2:
             if st.button("🗑️ Delete File", key=f"del_{unique_key_id}"):
                 if save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col):
@@ -699,7 +714,7 @@ if check_password():
 
     with tab_kitchen:
         with st.expander("🛠️ Bulk Kitchen Photo Search & Auto-Fill"):
-            st.write("Scan kitchen items missing photos to auto-suggest image URLs:")
+            st.write("Scan kitchen items missing photos to auto-suggest images via Picsum:")
             missing_k_mask = (
                 df_kitchen["Image_Path"].isna()
                 | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
@@ -714,11 +729,10 @@ if check_password():
                     k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
                     for idx_k, k_row in missing_k_df.iterrows():
                         k_name = k_row["Name of Item"]
-                        encoded_k = urllib.parse.quote_plus(k_name)
                         mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(k_name).lower().strip()
                         if mask_k.any():
                             target_idx = k_df_csv[mask_k].index[0]
-                            k_df_csv.at[target_idx, "Image_Path"] = f"https://source.unsplash.com/400x300/?{encoded_k},kitchen"
+                            k_df_csv.at[target_idx, "Image_Path"] = f"https://picsum.photos/seed/{hash(k_name)}/400/300"
                     k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
                     push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk kitchen photo update")
                     st.success("Auto-generated product photos for kitchen gear!")
