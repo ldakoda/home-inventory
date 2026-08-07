@@ -579,11 +579,11 @@ if check_password():
         "🍳 Kitchen Gear"
     ])
 
-    def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, category_type):
+    def render_edit_form(unique_key_id, item_id, row, editable_cols, file_path, title_col):
         """Universal form renderer for editing and deleting items."""
         edit_inputs = {}
         for col_name in editable_cols:
-            input_key = f"edit_{file_path}_{idx}_{col_name}"
+            input_key = f"edit_field_{unique_key_id}_{col_name}"
             if input_key not in st.session_state:
                 st.session_state[input_key] = str(row.get(col_name, ""))
 
@@ -591,22 +591,22 @@ if check_password():
 
         col_btn1, col_btn2 = st.columns([1, 1])
         with col_btn1:
-            if st.button("💾 Save Changes", key=f"save_{file_path}_{idx}"):
+            if st.button("💾 Save Changes", key=f"save_{unique_key_id}"):
                 if save_edited_row(file_path, item_id, edit_inputs, title_col):
-                    st.session_state[f"expand_edit_{file_path}_{idx}"] = False
+                    st.session_state[f"expand_edit_{unique_key_id}"] = False
                     for col_name in editable_cols:
-                        st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
+                        st.session_state.pop(f"edit_field_{unique_key_id}_{col_name}", None)
                     st.rerun()
 
         with col_btn2:
-            if st.button("🗑️ Delete Item", key=f"del_{file_path}_{idx}"):
+            if st.button("🗑️ Delete Item", key=f"del_{unique_key_id}"):
                 if save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col):
-                    st.session_state[f"expand_edit_{file_path}_{idx}"] = False
+                    st.session_state[f"expand_edit_{unique_key_id}"] = False
                     for col_name in editable_cols:
-                        st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
+                        st.session_state.pop(f"edit_field_{unique_key_id}_{col_name}", None)
                     st.rerun()
 
-    def display_items_list_or_cards(df, title_col, details_func, summary_inline_func, file_path, editable_cols, category_type, category_badge=""):
+    def display_items_list_or_cards(df, title_col, details_func, summary_inline_func, file_path, editable_cols, category_badge="", key_prefix="tab"):
         if df.empty:
             st.info("No items in this selection.")
             return
@@ -622,13 +622,21 @@ if check_password():
         is_asc = order_by == "Asc"
         if sort_by_col == "Title / Item Name" and title_col in df.columns:
             df = df.sort_values(by=title_col, ascending=is_asc, key=lambda x: x.astype(str).str.lower())
+        elif sort_by_col == "Category" and "_Category" in df.columns:
+            df = df.sort_values(by="_Category", ascending=is_asc)
+
+        df_reset = df.reset_index(drop=True)
 
         # CARDS VIEW
         if layout_view == "🎴 Cards":
             cols = st.columns(3)
-            for idx, row in df.reset_index(drop=True).iterrows():
+            for idx, row in df_reset.iterrows():
                 col = cols[idx % 3]
                 item_id = str(row[title_col])
+                row_file_path = str(row.get("_File", file_path))
+                row_badge = str(row.get("_Category", category_badge))
+                unique_key_id = f"{key_prefix}_{idx}_{hash(item_id)}"
+
                 with col:
                     with st.container(border=True):
                         img_val = row.get("Image_Path", "")
@@ -637,18 +645,21 @@ if check_password():
                         else:
                             st.caption("📷 No image available")
 
-                        if category_badge:
-                            st.caption(f"**Category:** {category_badge}")
+                        if row_badge:
+                            st.caption(f"**Category:** {row_badge}")
                         st.subheader(item_id)
                         st.write(details_func(row))
 
                         with st.expander(f"✏️ Edit / Delete '{item_id}'"):
-                            render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, category_type)
+                            render_edit_form(unique_key_id, item_id, row, editable_cols, row_file_path, title_col)
 
         # LIST VIEW
         else:
-            for idx, row in df.reset_index(drop=True).iterrows():
+            for idx, row in df_reset.iterrows():
                 item_id = str(row[title_col])
+                row_file_path = str(row.get("_File", file_path))
+                row_badge = str(row.get("_Category", category_badge))
+                unique_key_id = f"{key_prefix}_{idx}_{hash(item_id)}"
                 
                 with st.container(border=True):
                     c_img, c_info, c_edit = st.columns([0.4, 7.8, 0.8], vertical_alignment="center")
@@ -662,7 +673,7 @@ if check_password():
 
                     with c_info:
                         inline_details = summary_inline_func(row)
-                        badge_str = f"<strong>[{category_badge}]</strong> " if category_badge else ""
+                        badge_str = f"<strong>[{row_badge}]</strong> " if row_badge else ""
                         st.markdown(
                             f"<div style='margin:0; padding:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>"
                             f"{badge_str}<strong>{item_id}</strong> &nbsp;|&nbsp; "
@@ -672,17 +683,17 @@ if check_password():
                         )
 
                     with c_edit:
-                        expander_key = f"expand_edit_{file_path}_{idx}"
+                        expander_key = f"expand_edit_{unique_key_id}"
                         if expander_key not in st.session_state:
                             st.session_state[expander_key] = False
 
-                        if st.button("✏️ Edit", key=f"btn_toggle_edit_{file_path}_{idx}"):
+                        if st.button("✏️ Edit", key=f"btn_toggle_edit_{unique_key_id}"):
                             st.session_state[expander_key] = not st.session_state[expander_key]
 
                     if st.session_state.get(expander_key, False):
                         st.markdown("---")
                         st.subheader(f"✏️ Editing: {item_id}")
-                        render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, category_type)
+                        render_edit_form(unique_key_id, item_id, row, editable_cols, row_file_path, title_col)
 
     # --- TAB 1: MASTER ALL ITEMS TAB ---
     with tab_all:
@@ -693,63 +704,46 @@ if check_password():
         m_df["_Name"] = m_df["Title"]
         m_df["_Category"] = "Movies & TV"
         m_df["_File"] = "movies_and_tv_collection.csv"
-        m_df["_Cols"] = [["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"]] * len(m_df)
 
         g_df = df_games.copy()
         g_df["_Name"] = g_df["Title"]
         g_df["_Category"] = "Board & Card Games"
         g_df["_File"] = "board_and_card_games_collection.csv"
-        g_df["_Cols"] = [["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"]] * len(g_df)
 
         k_df = df_kitchen.copy()
         k_df["_Name"] = k_df["Name of Item"]
         k_df["_Category"] = "Kitchen Gear"
         k_df["_File"] = "kitchen_gear_inventory_v2.csv"
-        k_df["_Cols"] = [["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"]] * len(k_df)
 
         master_df = pd.concat([m_df, g_df, k_df], ignore_index=True)
 
-        if global_search_q:
-            mask = master_df["_Name"].astype(str).str.contains(global_search_q, case=False)
-            master_df = master_df[mask]
-
-        if master_df.empty:
-            st.info("No items match your master search query.")
-        else:
-            is_asc = order_by == "Asc"
-            if sort_by_col == "Category":
-                master_df = master_df.sort_values(by="_Category", ascending=is_asc)
+        def master_details(r):
+            cat = r.get("_Category", "")
+            if cat == "Movies & TV":
+                return f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}"
+            elif cat == "Board & Card Games":
+                return f"**Players:** {r.get('Number of Players', '')}\n\n**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}"
             else:
-                master_df = master_df.sort_values(by="_Name", ascending=is_asc, key=lambda x: x.astype(str).str.lower())
+                return f"**Type:** {r.get('Type of Equipment', '')}"
 
-            for idx, row in master_df.reset_index(drop=True).iterrows():
-                cat = row["_Category"]
-                item_name = row["_Name"]
-                file_path = row["_File"]
-                
-                if cat == "Movies & TV":
-                    cols = ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"]
-                    summary = f"Type: {row.get('Type', '')} | Year: {row.get('Year Released', '')} | Genre: {row.get('Genre', '')}"
-                    details = lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}"
-                elif cat == "Board & Card Games":
-                    cols = ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"]
-                    summary = f"Players: {row.get('Number of Players', '')} | Length: {row.get('Length of Play', '')} | Age: {row.get('Age Rating', '')}"
-                    details = lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}"
-                else:
-                    cols = ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"]
-                    summary = f"Type: {row.get('Type of Equipment', '')}"
-                    details = lambda r: f"**Type:** {r.get('Type of Equipment', '')}"
+        def master_summary(r):
+            cat = r.get("_Category", "")
+            if cat == "Movies & TV":
+                return f"Type: {r.get('Type', '')} | Year: {r.get('Year Released', '')} | Genre: {r.get('Genre', '')}"
+            elif cat == "Board & Card Games":
+                return f"Players: {r.get('Number of Players', '')} | Length: {r.get('Length of Play', '')} | Age: {r.get('Age Rating', '')}"
+            else:
+                return f"Type: {r.get('Type of Equipment', '')}"
 
-                display_items_list_or_cards(
-                    pd.DataFrame([row]),
-                    "_Name",
-                    details,
-                    lambda r: summary,
-                    file_path,
-                    cols,
-                    category_type="master",
-                    category_badge=cat
-                )
+        display_items_list_or_cards(
+            master_df,
+            "_Name",
+            master_details,
+            master_summary,
+            "movies_and_tv_collection.csv",
+            ["Title", "Name of Item", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Type of Equipment", "Instruction Manual Link", "Image_Path"],
+            key_prefix="master"
+        )
 
     # --- TAB 2: MOVIES & TV ---
     with tab_movies:
@@ -761,7 +755,7 @@ if check_password():
             lambda r: f"Type: {r.get('Type', '')} | Rating: {r.get('Rating', '')} | Year: {r.get('Year Released', '')} | Genre: {r.get('Genre', '')}",
             "movies_and_tv_collection.csv",
             ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"],
-            category_type="movie",
+            key_prefix="movies"
         )
 
     # --- TAB 3: BOARD & CARD GAMES ---
@@ -774,7 +768,7 @@ if check_password():
             lambda r: f"Players: {r.get('Number of Players', '')} | Length: {r.get('Length of Play', '')} | Age: {r.get('Age Rating', '')} | Style: {r.get('Style of Game', '')}",
             "board_and_card_games_collection.csv",
             ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"],
-            category_type="game",
+            key_prefix="games"
         )
 
     # --- TAB 4: KITCHEN GEAR ---
@@ -787,5 +781,5 @@ if check_password():
             lambda r: f"Type: {r.get('Type of Equipment', '')} " + (f"| [📄 Manual Link]({r['Instruction Manual Link']})" if pd.notna(r.get("Instruction Manual Link")) and str(r.get("Instruction Manual Link")).startswith("http") else ""),
             "kitchen_gear_inventory_v2.csv",
             ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"],
-            category_type="kitchen",
+            key_prefix="kitchen"
         )
