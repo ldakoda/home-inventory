@@ -95,19 +95,27 @@ def safe_load_csv(file_path, expected_columns):
         return pd.DataFrame(columns=expected_columns)
 
 
-# --- BOARD GAME GEEK (BGG) API HELPERS (FIXED) ---
+# --- BOARD GAME GEEK (BGG) API HELPERS ---
 def fetch_bgg_game_matches(game_title):
-    """Queries BoardGameGeek free API for game titles with custom User-Agent headers."""
+    """Queries BoardGameGeek XML API2 with customized, non-generic headers."""
+    if not game_title or not game_title.strip():
+        return []
+
     try:
         encoded_q = urllib.parse.quote_plus(game_title.strip())
         url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
-        headers = {"User-Agent": "HomeInventoryApp/1.0 (Streamlit App)"}
         
-        res = requests.get(url, headers=headers, timeout=6)
+        headers = {
+            "User-Agent": "HomeInventoryApp/1.0 (Python Streamlit Inventory Tool)",
+            "Accept": "text/xml,application/xml"
+        }
+
+        res = requests.get(url, headers=headers, timeout=8)
+        
         if res.status_code == 200:
             root = ET.fromstring(res.content)
             items = []
-            for item in root.findall("item")[:6]:  # Top 6 matches
+            for item in root.findall("item")[:8]:
                 bgg_id = item.attrib.get("id")
                 name_elem = item.find("name")
                 name = name_elem.attrib.get("value") if name_elem is not None else game_title
@@ -115,41 +123,47 @@ def fetch_bgg_game_matches(game_title):
                 year = year_elem.attrib.get("value") if year_elem is not None else ""
                 items.append({"id": bgg_id, "name": name, "year": year})
             return items
+        elif res.status_code == 401:
+            st.error("BGG API Error 401: Request denied by BGG. Please try again in a few seconds.")
         else:
-            st.error(f"BGG Error Code {res.status_code}: Service blocked or throttled.")
+            st.error(f"BGG returned status code {res.status_code}")
+
     except Exception as e:
-        st.error(f"BGG Search Error: {e}")
+        st.error(f"BGG Fetch Error: {e}")
     return []
 
 
 def fetch_bgg_game_details(bgg_id):
-    """Fetches details (thumbnail, player count, playtime, age) for a BGG ID."""
+    """Fetches full game details and thumbnail for a specific BGG ID."""
+    if not bgg_id:
+        return {}
+
     try:
         url = f"https://boardgamegeek.com/xmlapi2/thing?id={bgg_id}"
-        headers = {"User-Agent": "HomeInventoryApp/1.0 (Streamlit App)"}
-        res = requests.get(url, headers=headers, timeout=6)
-        
+        headers = {
+            "User-Agent": "HomeInventoryApp/1.0 (Python Streamlit Inventory Tool)",
+            "Accept": "text/xml,application/xml"
+        }
+
+        res = requests.get(url, headers=headers, timeout=8)
+
         if res.status_code == 200:
             root = ET.fromstring(res.content)
             item = root.find("item")
             if item is not None:
-                # Thumbnail / Image
                 image_elem = item.find("thumbnail")
-                if image_elem is None:
+                if image_elem is None or not image_elem.text:
                     image_elem = item.find("image")
                 image_url = image_elem.text if image_elem is not None else ""
-                
-                # Players
+
                 min_p = item.find("minplayers").attrib.get("value") if item.find("minplayers") is not None else ""
                 max_p = item.find("maxplayers").attrib.get("value") if item.find("maxplayers") is not None else ""
                 players = f"{min_p}-{max_p} Players" if min_p and max_p and min_p != max_p else f"{min_p} Players"
 
-                # Playtime
                 min_t = item.find("minplaytime").attrib.get("value") if item.find("minplaytime") is not None else ""
                 max_t = item.find("maxplaytime").attrib.get("value") if item.find("maxplaytime") is not None else ""
                 length = f"{min_t}-{max_t} min" if min_t and max_t and min_t != max_t else f"{min_t} min"
 
-                # Age
                 age = item.find("minage").attrib.get("value") if item.find("minage") is not None else ""
                 if age and age != "0":
                     age = f"{age}+"
@@ -161,7 +175,7 @@ def fetch_bgg_game_details(bgg_id):
                     "Age Rating": age,
                 }
     except Exception as e:
-        st.error(f"BGG Detail Error: {e}")
+        st.error(f"BGG Detail Fetch Error: {e}")
     return {}
 
 
