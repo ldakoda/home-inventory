@@ -426,7 +426,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. ADD ITEM DRAWER WITH FIXED IMAGE SAVING
+    # 7. ADD ITEM DRAWER
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -623,7 +623,6 @@ if check_password():
 
         uploaded_img_file = st.file_uploader(f"Upload Image File for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
 
-        # COLLECTION / TRILOGY NESTED SUB-MOVIES OPTION
         if row.get("Category") == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
             st.markdown("---")
             st.subheader(f"🎬 Collection Pack Breakdown for '{item_id}'")
@@ -774,12 +773,12 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH RESTORED BULK EDIT TOOLBARS
+    # 10. TAB RENDERING WITH BULK EDIT TOOLBARS
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
 
-    # MOVIES TAB WITH BULK METADATA ADD
+    # MOVIES TAB (BULK UNPACKER)
     with tabs[1]:
         with st.expander("🛠️ Bulk Metadata Add & Collection Unpacker"):
             st.write("Bulk unpack collections or fetch OMDb metadata for missing movie entries:")
@@ -794,7 +793,7 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
 
-    # BOARD GAMES TAB WITH BULK GAME DETAILS ADD
+    # BOARD GAMES TAB (BULK BGG DETAILS SCANNER)
     with tabs[2]:
         with st.expander("🛠️ Bulk Add Game Details & Box Art Scanner"):
             missing_games_mask = (
@@ -850,12 +849,12 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
-    # KITCHEN & DECORATION TAB WITH BULK IMAGE ADD
+    # KITCHEN GEAR TAB (BULK IMAGE ADDER)
     with tabs[3]:
         with st.expander("🛠️ Bulk Add Images for Kitchen & Decor Gear"):
-            st.write("Upload or auto-generate images in bulk for kitchen and decoration items missing photos:")
+            st.write("Upload multiple photo files at once to automatically match and add images to kitchen items:")
             
-            bulk_files = st.file_uploader("Upload Multiple Photo Files at Once", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key="bulk_k_upload")
+            bulk_files = st.file_uploader("Upload Multiple Photo Files", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key="bulk_k_upload")
             if st.button("📥 Save Uploaded Photos to Kitchen Items", key="btn_bulk_k_save") and bulk_files:
                 k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
                 for f in bulk_files:
@@ -877,9 +876,34 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
-    # DYNAMIC CUSTOM TABS
+    # DYNAMIC CUSTOM CATEGORIES TABS WITH UNIVERSAL BULK IMAGE ADDER
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
+            with st.expander(f"🛠️ Bulk Add Images for {custom_cat['Name']}"):
+                st.write(f"Upload multiple photos at once to match items in **{custom_cat['Name']}**:")
+                c_bulk_files = st.file_uploader(f"Upload Multiple Photo Files for {custom_cat['Name']}", type=["jpg", "png", "jpeg"], accept_multiple_files=True, key=f"bulk_cust_upload_{i}")
+                
+                if st.button(f"📥 Apply Uploaded Photos to {custom_cat['Name']}", key=f"btn_bulk_cust_save_{i}") and c_bulk_files:
+                    c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
+                    matched_count = 0
+                    for f in c_bulk_files:
+                        local_path = os.path.join(IMAGE_DIR, f.name)
+                        with open(local_path, "wb") as out_f:
+                            out_f.write(f.getbuffer())
+                        
+                        clean_f_name = os.path.splitext(f.name)[0].lower()
+                        mask = c_df_csv[custom_cat["Primary_Col"]].astype(str).str.lower().str.contains(clean_f_name)
+                        if mask.any():
+                            idx = c_df_csv[mask].index[0]
+                            c_df_csv.at[idx, "Image_Path"] = local_path
+                            matched_count += 1
+
+                    c_df_csv.to_csv(custom_cat["File"], index=False)
+                    push_csv_to_github(custom_cat["File"], f"Bulk upload photos for {custom_cat['Name']}")
+                    st.success(f"Saved {len(c_bulk_files)} photos! (Matched {matched_count} existing item rows)")
+                    st.rerun()
+
+            st.markdown("---")
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
 
     # ADD CATEGORY BUILDER TAB
