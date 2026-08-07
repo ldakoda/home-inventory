@@ -1,4 +1,5 @@
 import os
+import urllib.parse
 import pandas as pd
 import requests
 import streamlit as st
@@ -275,21 +276,16 @@ if check_password():
                 else:
                     with st.spinner(f"Searching for '{search_title}'..."):
                         try:
-                            url = f"http://www.omdbapi.com/?s={search_title}&apikey={OMDB_API_KEY}"
+                            encoded_q = urllib.parse.quote_plus(search_title.strip())
+                            url = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
                             res = requests.get(url, timeout=5).json()
 
                             if res.get("Response") == "True":
-                                st.session_state["search_results"] = res.get(
-                                    "Search", []
-                                )
-                                st.success(
-                                    f"Found {len(st.session_state['search_results'])} match(es)!"
-                                )
+                                st.session_state["search_results"] = res.get("Search", [])
+                                st.success(f"Found {len(st.session_state['search_results'])} match(es)!")
                             else:
                                 st.session_state["search_results"] = []
-                                st.error(
-                                    f"No results found for '{search_title}'."
-                                )
+                                st.error(f"No results found for '{search_title}'.")
                         except Exception as e:
                             st.error(f"Error fetching search results: {e}")
 
@@ -342,69 +338,28 @@ if check_password():
                             )
 
                             if st.button("✅ Accept & Use This Movie"):
-                                st.session_state["m_title"] = full_res.get(
-                                    "Title", ""
-                                )
-                                st.session_state["m_year"] = full_res.get(
-                                    "Year", ""
-                                )
-                                st.session_state["m_rating"] = full_res.get(
-                                    "Rated", ""
-                                )
-                                st.session_state["m_length"] = full_res.get(
-                                    "Runtime", ""
-                                )
-                                st.session_state["m_type"] = full_res.get(
-                                    "Type", "movie"
-                                ).capitalize()
-                                st.session_state["m_genre"] = full_res.get(
-                                    "Genre", ""
-                                )
-                                st.session_state["m_poster"] = (
-                                    poster if poster != "N/A" else ""
-                                )
-                                st.success(
-                                    f"Loaded '{full_res.get('Title')}' into form below!"
-                                )
+                                st.session_state["m_title"] = full_res.get("Title", "")
+                                st.session_state["m_year"] = full_res.get("Year", "")
+                                st.session_state["m_rating"] = full_res.get("Rated", "")
+                                st.session_state["m_length"] = full_res.get("Runtime", "")
+                                st.session_state["m_type"] = full_res.get("Type", "movie").capitalize()
+                                st.session_state["m_genre"] = full_res.get("Genre", "")
+                                st.session_state["m_poster"] = poster if poster != "N/A" else ""
+                                st.success(f"Loaded '{full_res.get('Title')}' into form below!")
 
             st.markdown("---")
             st.markdown("#### 3. Verify & Save Entry")
 
             with st.form("movie_form", clear_on_submit=True):
-                title = st.text_input(
-                    "Title *", value=st.session_state.get("m_title", "")
-                )
-                rating = st.text_input(
-                    "Rating (PG, PG-13, R)",
-                    value=st.session_state.get("m_rating", ""),
-                )
-                year = st.text_input(
-                    "Year Released", value=st.session_state.get("m_year", "")
-                )
-                length = st.text_input(
-                    "Length of Movie",
-                    value=st.session_state.get("m_length", ""),
-                )
-                m_type = st.selectbox(
-                    "Type",
-                    ["Movie", "TV"],
-                    index=(
-                        0
-                        if st.session_state.get("m_type", "Movie") == "Movie"
-                        else 1
-                    ),
-                )
-                genre = st.text_input(
-                    "Genre", value=st.session_state.get("m_genre", "")
-                )
-                poster_link = st.text_input(
-                    "Poster / Image URL",
-                    value=st.session_state.get("m_poster", ""),
-                )
+                title = st.text_input("Title *", value=st.session_state.get("m_title", ""))
+                rating = st.text_input("Rating (PG, PG-13, R)", value=st.session_state.get("m_rating", ""))
+                year = st.text_input("Year Released", value=st.session_state.get("m_year", ""))
+                length = st.text_input("Length of Movie", value=st.session_state.get("m_length", ""))
+                m_type = st.selectbox("Type", ["Movie", "TV"], index=(0 if st.session_state.get("m_type", "Movie") == "Movie" else 1))
+                genre = st.text_input("Genre", value=st.session_state.get("m_genre", ""))
+                poster_link = st.text_input("Poster / Image URL", value=st.session_state.get("m_poster", ""))
 
-                uploaded_image = st.file_uploader(
-                    "Or Upload Custom Image File", type=["jpg", "png", "jpeg"]
-                )
+                uploaded_image = st.file_uploader("Or Upload Custom Image File", type=["jpg", "png", "jpeg"])
 
                 if st.form_submit_button("Save Movie to Inventory"):
                     if not title:
@@ -412,9 +367,7 @@ if check_password():
                     else:
                         image_path = poster_link
                         if uploaded_image:
-                            image_path = os.path.join(
-                                IMAGE_DIR, uploaded_image.name
-                            )
+                            image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
                             with open(image_path, "wb") as f:
                                 f.write(uploaded_image.getbuffer())
 
@@ -448,9 +401,7 @@ if check_password():
                         updated_df.to_csv(file_path, index=False)
                         push_csv_to_github(file_path, f"Add movie '{title}'")
 
-                        st.success(
-                            f"Added '{title}' to Movies & TV database!"
-                        )
+                        st.success(f"Added '{title}' to Movies & TV database!")
 
                         for key in [
                             "m_title",
@@ -469,15 +420,11 @@ if check_password():
             st.subheader("Board & Card Game Entry")
             with st.form("game_form", clear_on_submit=True):
                 title = st.text_input("Game Title *")
-                players = st.text_input(
-                    "Number of Players (e.g., 2-4 Players)"
-                )
+                players = st.text_input("Number of Players (e.g., 2-4 Players)")
                 length = st.text_input("Length of Play (e.g., 30-45 min)")
                 age = st.text_input("Age Rating (e.g., 10+)")
                 style = st.text_input("Style of Game (Board, Card, Dice)")
-                uploaded_image = st.file_uploader(
-                    "Upload Box Photo", type=["jpg", "png", "jpeg"]
-                )
+                uploaded_image = st.file_uploader("Upload Box Photo", type=["jpg", "png", "jpeg"])
 
                 if st.form_submit_button("Save Game to Inventory"):
                     if not title:
@@ -485,9 +432,7 @@ if check_password():
                     else:
                         image_path = ""
                         if uploaded_image:
-                            image_path = os.path.join(
-                                IMAGE_DIR, uploaded_image.name
-                            )
+                            image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
                             with open(image_path, "wb") as f:
                                 f.write(uploaded_image.getbuffer())
 
@@ -529,9 +474,7 @@ if check_password():
                     ["Appliance", "Cookware", "Appliance Accessory", "Utensil"],
                 )
                 manual = st.text_input("Instruction Manual Link (URL)")
-                uploaded_image = st.file_uploader(
-                    "Upload Item Photo", type=["jpg", "png", "jpeg"]
-                )
+                uploaded_image = st.file_uploader("Upload Item Photo", type=["jpg", "png", "jpeg"])
 
                 if st.form_submit_button("Save Kitchen Gear"):
                     if not title:
@@ -539,9 +482,7 @@ if check_password():
                     else:
                         image_path = ""
                         if uploaded_image:
-                            image_path = os.path.join(
-                                IMAGE_DIR, uploaded_image.name
-                            )
+                            image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
                             with open(image_path, "wb") as f:
                                 f.write(uploaded_image.getbuffer())
 
@@ -567,12 +508,10 @@ if check_password():
                         )
                         updated_df.to_csv(file_path, index=False)
                         push_csv_to_github(file_path, f"Add kitchen item '{title}'")
-                        st.success(
-                            f"Added '{title}' to Kitchen Gear database!"
-                        )
+                        st.success(f"Added '{title}' to Kitchen Gear database!")
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH EXCEL SINGLE-ROW LIST VIEW
+    # 7. PAGE: BROWSE INVENTORY WITH FIXED ENCODING & METADATA FALLBACK
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -688,8 +627,6 @@ if check_password():
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
-                    
-                    # Columns: [0] Image (Left), [1] Single-Line Info, [2] Edit Expander
                     c_img, c_info, c_edit = st.columns([0.6, 7.4, 1.0], vertical_alignment="center")
 
                     with c_img:
@@ -714,7 +651,7 @@ if check_password():
                     st.divider()
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
-            """Form renderer for editing row attributes with multi-match selection."""
+            """Form renderer with encoded query search & title fallback."""
             if is_movie_tab and OMDB_API_KEY:
                 st.markdown("##### 🔍 Search Metadata Database")
                 col_m1, col_m2 = st.columns([3, 1])
@@ -729,13 +666,33 @@ if check_password():
                     st.write("")
                     if st.button("Fetch Matches", key=f"btn_edit_search_{file_path}_{idx}"):
                         try:
-                            url = f"http://www.omdbapi.com/?s={edit_search_q}&apikey={OMDB_API_KEY}"
-                            res = requests.get(url, timeout=4).json()
-                            if res.get("Response") == "True":
-                                st.session_state[f"edit_matches_{idx}"] = res.get("Search", [])
-                                st.success(f"Found {len(res.get('Search', []))} match(es)!")
+                            clean_q = edit_search_q.strip()
+                            encoded_q = urllib.parse.quote_plus(clean_q)
+                            
+                            # Primary search via search endpoint (?s=)
+                            url_s = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
+                            res_s = requests.get(url_s, timeout=4).json()
+                            
+                            matches = []
+                            if res_s.get("Response") == "True":
+                                matches = res_s.get("Search", [])
                             else:
-                                st.error(f"No results found for '{edit_search_q}'.")
+                                # Fallback: Direct exact title query (?t=)
+                                url_t = f"http://www.omdbapi.com/?t={encoded_q}&apikey={OMDB_API_KEY}"
+                                res_t = requests.get(url_t, timeout=4).json()
+                                if res_t.get("Response") == "True":
+                                    matches = [{
+                                        "Title": res_t.get("Title"),
+                                        "Year": res_t.get("Year"),
+                                        "Type": res_t.get("Type", "movie"),
+                                        "imdbID": res_t.get("imdbID"),
+                                    }]
+
+                            if matches:
+                                st.session_state[f"edit_matches_{idx}"] = matches
+                                st.success(f"Found {len(matches)} match(es)!")
+                            else:
+                                st.error(f"No results found for '{edit_search_q}'. Check API key or title spelling.")
                         except Exception as e:
                             st.error(f"Error fetching metadata: {e}")
 
@@ -811,79 +768,51 @@ if check_password():
             # Bulk Audit Tool
             with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Metadata"):
                 if not OMDB_API_KEY:
-                    st.error(
-                        "Missing `OMDB_KEY` in secrets. Please configure it to use auto-fill."
-                    )
+                    st.error("Missing `OMDB_KEY` in secrets. Please configure it to use auto-fill.")
                 else:
                     missing_mask = (
                         df_movies["Year Released"].isna()
-                        | (
-                            df_movies["Year Released"]
-                            .astype(str)
-                            .str.strip()
-                            == ""
-                        )
+                        | (df_movies["Year Released"].astype(str).str.strip() == "")
                         | df_movies["Rating"].isna()
                         | (df_movies["Rating"].astype(str).str.strip() == "")
                         | df_movies["Image_Path"].isna()
-                        | (
-                            df_movies["Image_Path"]
-                            .astype(str)
-                            .str.strip()
-                            == ""
-                        )
+                        | (df_movies["Image_Path"].astype(str).str.strip() == "")
                     )
                     missing_df = df_movies[missing_mask]
 
                     if missing_df.empty:
-                        st.success(
-                            "🎉 All titles in your Movies & TV database have complete metadata!"
-                        )
+                        st.success("🎉 All titles in your Movies & TV database have complete metadata!")
                     else:
-                        st.warning(
-                            f"Found {len(missing_df)} item(s) missing metadata or posters."
-                        )
+                        st.warning(f"Found {len(missing_df)} item(s) missing metadata or posters.")
 
                         if st.button("🔍 Scan Database for Missing Data"):
                             scan_results = []
                             progress_bar = st.progress(0)
 
-                            for i, (_, m_row) in enumerate(
-                                missing_df.iterrows()
-                            ):
+                            for i, (_, m_row) in enumerate(missing_df.iterrows()):
                                 m_title = m_row["Title"]
                                 try:
-                                    url = f"http://www.omdbapi.com/?t={m_title}&apikey={OMDB_API_KEY}"
+                                    encoded_m = urllib.parse.quote_plus(str(m_title).strip())
+                                    url = f"http://www.omdbapi.com/?t={encoded_m}&apikey={OMDB_API_KEY}"
                                     res = requests.get(url, timeout=4).json()
                                     if res.get("Response") == "True":
                                         scan_results.append(
                                             {
                                                 "Title": m_title,
-                                                "Found_Year": res.get(
-                                                    "Year", ""
-                                                ),
-                                                "Found_Rating": res.get(
-                                                    "Rated", ""
-                                                ),
-                                                "Found_Length": res.get(
-                                                    "Runtime", ""
-                                                ),
-                                                "Found_Genre": res.get(
-                                                    "Genre", ""
-                                                ),
+                                                "Found_Year": res.get("Year", ""),
+                                                "Found_Rating": res.get("Rated", ""),
+                                                "Found_Length": res.get("Runtime", ""),
+                                                "Found_Genre": res.get("Genre", ""),
                                                 "Found_Poster": (
                                                     res.get("Poster", "")
-                                                    if res.get("Poster")
-                                                    != "N/A"
+                                                    if res.get("Poster") != "N/A"
                                                     else ""
                                                 ),
                                             }
                                         )
                                 except Exception:
                                     pass
-                                progress_bar.progress(
-                                    (i + 1) / len(missing_df)
-                                )
+                                progress_bar.progress((i + 1) / len(missing_df))
 
                             st.session_state["bulk_scan_results"] = scan_results
 
@@ -896,23 +825,16 @@ if check_password():
                                     st.session_state["bulk_scan_results"],
                                 ):
                                     st.session_state["bulk_scan_results"] = []
-                                    st.success(
-                                        "Updated and synced all missing metadata to GitHub!"
-                                    )
+                                    st.success("Updated and synced all missing metadata to GitHub!")
                                     st.rerun()
 
                             st.markdown("---")
-                            for res_item in list(
-                                st.session_state["bulk_scan_results"]
-                            ):
+                            for res_item in list(st.session_state["bulk_scan_results"]):
                                 with st.container(border=True):
                                     col_a, col_b, col_c = st.columns([1, 3, 1])
                                     with col_a:
                                         if res_item["Found_Poster"]:
-                                            st.image(
-                                                res_item["Found_Poster"],
-                                                width=80,
-                                            )
+                                            st.image(res_item["Found_Poster"], width=80)
                                         else:
                                             st.caption("No poster")
                                     with col_b:
@@ -922,45 +844,25 @@ if check_password():
                                             f"Runtime: {res_item['Found_Length']} | Genre: {res_item['Found_Genre']}"
                                         )
                                     with col_c:
-                                        if st.button(
-                                            "✅ Accept & Update",
-                                            key=f"accept_{res_item['Title']}",
-                                        ):
+                                        if st.button("✅ Accept & Update", key=f"accept_{res_item['Title']}"):
                                             update_dict = {
-                                                "Year Released": res_item[
-                                                    "Found_Year"
-                                                ],
-                                                "Rating": res_item[
-                                                    "Found_Rating"
-                                                ],
-                                                "Length of Movie": res_item[
-                                                    "Found_Length"
-                                                ],
-                                                "Genre": res_item[
-                                                    "Found_Genre"
-                                                ],
-                                                "Image_Path": res_item[
-                                                    "Found_Poster"
-                                                ],
+                                                "Year Released": res_item["Found_Year"],
+                                                "Rating": res_item["Found_Rating"],
+                                                "Length of Movie": res_item["Found_Length"],
+                                                "Genre": res_item["Found_Genre"],
+                                                "Image_Path": res_item["Found_Poster"],
                                             }
                                             if update_movie_in_csv(
                                                 "movies_and_tv_collection.csv",
                                                 res_item["Title"],
                                                 update_dict,
                                             ):
-                                                st.session_state[
-                                                    "bulk_scan_results"
-                                                ] = [
+                                                st.session_state["bulk_scan_results"] = [
                                                     item
-                                                    for item in st.session_state[
-                                                        "bulk_scan_results"
-                                                    ]
-                                                    if item["Title"]
-                                                    != res_item["Title"]
+                                                    for item in st.session_state["bulk_scan_results"]
+                                                    if item["Title"] != res_item["Title"]
                                                 ]
-                                                st.success(
-                                                    f"Updated '{res_item['Title']}'!"
-                                                )
+                                                st.success(f"Updated '{res_item['Title']}'!")
                                                 st.rerun()
 
             st.markdown("---")
