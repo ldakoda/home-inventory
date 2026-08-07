@@ -41,24 +41,42 @@ def update_movie_in_csv(file_path, title, new_data_dict):
     """Updates missing metadata for a specific title directly in the CSV."""
     if not os.path.exists(file_path):
         return False
-    
+
     df = safe_load_csv(
         file_path,
-        ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"]
+        [
+            "Title",
+            "Rating",
+            "Year Released",
+            "Length of Movie",
+            "Type",
+            "Genre",
+            "Image_Path",
+        ],
     )
-    
+
     # Locate row index matching title
-    mask = df["Title"].astype(str).str.lower().str.strip() == str(title).lower().strip()
+    mask = (
+        df["Title"]
+        .astype(str)
+        .str.lower()
+        .str.strip()
+        == str(title).lower().strip()
+    )
     if not mask.any():
         return False
+
+    # Convert DataFrame columns to object/string to prevent integer dtype conflicts
+    df = df.astype(object)
 
     idx = df[mask].index[0]
     for key, val in new_data_dict.items():
         if val and str(val).strip() != "":
-            df.at[idx, key] = val
-            
+            df.at[idx, key] = str(val)
+
     df.to_csv(file_path, index=False)
     return True
+
 
 # -----------------------------------------------------------------------------
 # 3. AUTHENTICATION
@@ -295,17 +313,36 @@ if check_password():
                         file_path = "movies_and_tv_collection.csv"
                         existing_df = safe_load_csv(
                             file_path,
-                            ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"]
+                            [
+                                "Title",
+                                "Rating",
+                                "Year Released",
+                                "Length of Movie",
+                                "Type",
+                                "Genre",
+                                "Image_Path",
+                            ],
                         )
-                        updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
+                        updated_df = pd.concat(
+                            [existing_df, pd.DataFrame([new_entry])],
+                            ignore_index=True,
+                        )
                         updated_df.to_csv(file_path, index=False)
 
-                        st.success(f"Added '{title}' to Movies & TV database!")
+                        st.success(
+                            f"Added '{title}' to Movies & TV database!"
+                        )
 
                         # Clear session state
                         for key in [
-                            "m_title", "m_year", "m_rating", "m_length",
-                            "m_type", "m_genre", "m_poster", "search_results",
+                            "m_title",
+                            "m_year",
+                            "m_rating",
+                            "m_length",
+                            "m_type",
+                            "m_genre",
+                            "m_poster",
+                            "search_results",
                         ]:
                             st.session_state.pop(key, None)
 
@@ -314,11 +351,15 @@ if check_password():
             st.subheader("Board & Card Game Entry")
             with st.form("game_form", clear_on_submit=True):
                 title = st.text_input("Game Title *")
-                players = st.text_input("Number of Players (e.g., 2-4 Players)")
+                players = st.text_input(
+                    "Number of Players (e.g., 2-4 Players)"
+                )
                 length = st.text_input("Length of Play (e.g., 30-45 min)")
                 age = st.text_input("Age Rating (e.g., 10+)")
                 style = st.text_input("Style of Game (Board, Card, Dice)")
-                uploaded_image = st.file_uploader("Upload Box Photo", type=["jpg", "png", "jpeg"])
+                uploaded_image = st.file_uploader(
+                    "Upload Box Photo", type=["jpg", "png", "jpeg"]
+                )
 
                 if st.form_submit_button("Save Game to Inventory"):
                     if not title:
@@ -326,7 +367,9 @@ if check_password():
                     else:
                         image_path = ""
                         if uploaded_image:
-                            image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
+                            image_path = os.path.join(
+                                IMAGE_DIR, uploaded_image.name
+                            )
                             with open(image_path, "wb") as f:
                                 f.write(uploaded_image.getbuffer())
 
@@ -341,9 +384,19 @@ if check_password():
                         file_path = "board_and_card_games_collection.csv"
                         existing_df = safe_load_csv(
                             file_path,
-                            ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"]
+                            [
+                                "Title",
+                                "Number of Players",
+                                "Length of Play",
+                                "Age Rating",
+                                "Style of Game",
+                                "Image_Path",
+                            ],
                         )
-                        updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
+                        updated_df = pd.concat(
+                            [existing_df, pd.DataFrame([new_entry])],
+                            ignore_index=True,
+                        )
                         updated_df.to_csv(file_path, index=False)
                         st.success(f"Added '{title}' to Games database!")
 
@@ -352,9 +405,14 @@ if check_password():
             st.subheader("Kitchen Gear Entry")
             with st.form("kitchen_form", clear_on_submit=True):
                 title = st.text_input("Name of Item *")
-                eq_type = st.selectbox("Type of Equipment", ["Appliance", "Cookware", "Appliance Accessory", "Utensil"])
+                eq_type = st.selectbox(
+                    "Type of Equipment",
+                    ["Appliance", "Cookware", "Appliance Accessory", "Utensil"],
+                )
                 manual = st.text_input("Instruction Manual Link (URL)")
-                uploaded_image = st.file_uploader("Upload Item Photo", type=["jpg", "png", "jpeg"])
+                uploaded_image = st.file_uploader(
+                    "Upload Item Photo", type=["jpg", "png", "jpeg"]
+                )
 
                 if st.form_submit_button("Save Kitchen Gear"):
                     if not title:
@@ -362,7 +420,9 @@ if check_password():
                     else:
                         image_path = ""
                         if uploaded_image:
-                            image_path = os.path.join(IMAGE_DIR, uploaded_image.name)
+                            image_path = os.path.join(
+                                IMAGE_DIR, uploaded_image.name
+                            )
                             with open(image_path, "wb") as f:
                                 f.write(uploaded_image.getbuffer())
 
@@ -375,11 +435,21 @@ if check_password():
                         file_path = "kitchen_gear_inventory_v2.csv"
                         existing_df = safe_load_csv(
                             file_path,
-                            ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"]
+                            [
+                                "Name of Item",
+                                "Type of Equipment",
+                                "Instruction Manual Link",
+                                "Image_Path",
+                            ],
                         )
-                        updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
+                        updated_df = pd.concat(
+                            [existing_df, pd.DataFrame([new_entry])],
+                            ignore_index=True,
+                        )
                         updated_df.to_csv(file_path, index=False)
-                        st.success(f"Added '{title}' to Kitchen Gear database!")
+                        st.success(
+                            f"Added '{title}' to Kitchen Gear database!"
+                        )
 
     # -----------------------------------------------------------------------------
     # 6. PAGE: BROWSE INVENTORY
@@ -389,15 +459,35 @@ if check_password():
 
         df_movies = safe_load_csv(
             "movies_and_tv_collection.csv",
-            ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"],
+            [
+                "Title",
+                "Rating",
+                "Year Released",
+                "Length of Movie",
+                "Type",
+                "Genre",
+                "Image_Path",
+            ],
         )
         df_games = safe_load_csv(
             "board_and_card_games_collection.csv",
-            ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"],
+            [
+                "Title",
+                "Number of Players",
+                "Length of Play",
+                "Age Rating",
+                "Style of Game",
+                "Image_Path",
+            ],
         )
         df_kitchen = safe_load_csv(
             "kitchen_gear_inventory_v2.csv",
-            ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"],
+            [
+                "Name of Item",
+                "Type of Equipment",
+                "Instruction Manual Link",
+                "Image_Path",
+            ],
         )
 
         search_query = st.text_input("🔍 Search items across categories...")
@@ -406,13 +496,19 @@ if check_password():
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
         )
 
-        def display_cards(df, title_col, details_func, image_col="Image_Path"):
+        def display_cards(
+            df, title_col, details_func, image_col="Image_Path"
+        ):
             if df.empty:
                 st.info("No items in this category yet.")
                 return
 
             if search_query:
-                mask = df[title_col].astype(str).str.contains(search_query, case=False)
+                mask = (
+                    df[title_col]
+                    .astype(str)
+                    .str.contains(search_query, case=False)
+                )
                 df = df[mask]
 
             if df.empty:
@@ -434,57 +530,98 @@ if check_password():
                         st.write(details_func(row))
 
         with tab_movies:
-            # --- NEW FEATURE: MISSING METADATA AUDIT TOOL ---
+            # --- MISSING METADATA AUDIT TOOL ---
             with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Metadata"):
                 if not OMDB_API_KEY:
-                    st.error("Missing `OMDB_KEY` in secrets. Please configure it to use auto-fill.")
+                    st.error(
+                        "Missing `OMDB_KEY` in secrets. Please configure it to use auto-fill."
+                    )
                 else:
-                    # Find rows where crucial metadata or poster is blank/nan
                     missing_mask = (
-                        df_movies["Year Released"].isna() | (df_movies["Year Released"].astype(str).str.strip() == "") |
-                        df_movies["Rating"].isna() | (df_movies["Rating"].astype(str).str.strip() == "") |
-                        df_movies["Image_Path"].isna() | (df_movies["Image_Path"].astype(str).str.strip() == "")
+                        df_movies["Year Released"].isna()
+                        | (
+                            df_movies["Year Released"]
+                            .astype(str)
+                            .str.strip()
+                            == ""
+                        )
+                        | df_movies["Rating"].isna()
+                        | (df_movies["Rating"].astype(str).str.strip() == "")
+                        | df_movies["Image_Path"].isna()
+                        | (
+                            df_movies["Image_Path"]
+                            .astype(str)
+                            .str.strip()
+                            == ""
+                        )
                     )
                     missing_df = df_movies[missing_mask]
 
                     if missing_df.empty:
-                        st.success("🎉 All titles in your Movies & TV database have complete metadata!")
+                        st.success(
+                            "🎉 All titles in your Movies & TV database have complete metadata!"
+                        )
                     else:
-                        st.warning(f"Found {len(missing_df)} item(s) missing metadata or posters.")
-                        
+                        st.warning(
+                            f"Found {len(missing_df)} item(s) missing metadata or posters."
+                        )
+
                         if st.button("🔍 Scan Database for Missing Data"):
                             scan_results = []
                             progress_bar = st.progress(0)
-                            
-                            for i, (_, m_row) in enumerate(missing_df.iterrows()):
+
+                            for i, (_, m_row) in enumerate(
+                                missing_df.iterrows()
+                            ):
                                 m_title = m_row["Title"]
                                 try:
                                     url = f"http://www.omdbapi.com/?t={m_title}&apikey={OMDB_API_KEY}"
                                     res = requests.get(url, timeout=4).json()
                                     if res.get("Response") == "True":
-                                        scan_results.append({
-                                            "Title": m_title,
-                                            "Found_Year": res.get("Year", ""),
-                                            "Found_Rating": res.get("Rated", ""),
-                                            "Found_Length": res.get("Runtime", ""),
-                                            "Found_Genre": res.get("Genre", ""),
-                                            "Found_Poster": res.get("Poster", "") if res.get("Poster") != "N/A" else ""
-                                        })
+                                        scan_results.append(
+                                            {
+                                                "Title": m_title,
+                                                "Found_Year": res.get(
+                                                    "Year", ""
+                                                ),
+                                                "Found_Rating": res.get(
+                                                    "Rated", ""
+                                                ),
+                                                "Found_Length": res.get(
+                                                    "Runtime", ""
+                                                ),
+                                                "Found_Genre": res.get(
+                                                    "Genre", ""
+                                                ),
+                                                "Found_Poster": (
+                                                    res.get("Poster", "")
+                                                    if res.get("Poster")
+                                                    != "N/A"
+                                                    else ""
+                                                ),
+                                            }
+                                        )
                                 except Exception:
                                     pass
-                                progress_bar.progress((i + 1) / len(missing_df))
-                            
+                                progress_bar.progress(
+                                    (i + 1) / len(missing_df)
+                                )
+
                             st.session_state["bulk_scan_results"] = scan_results
 
-                        # Display Audit Results Table with Accept Buttons
                         if st.session_state.get("bulk_scan_results"):
                             st.markdown("#### Review Found Metadata")
-                            for res_item in st.session_state["bulk_scan_results"]:
+                            for res_item in st.session_state[
+                                "bulk_scan_results"
+                            ]:
                                 with st.container(border=True):
                                     col_a, col_b, col_c = st.columns([1, 3, 1])
                                     with col_a:
                                         if res_item["Found_Poster"]:
-                                            st.image(res_item["Found_Poster"], width=80)
+                                            st.image(
+                                                res_item["Found_Poster"],
+                                                width=80,
+                                            )
                                         else:
                                             st.caption("No poster")
                                     with col_b:
@@ -494,16 +631,35 @@ if check_password():
                                             f"Runtime: {res_item['Found_Length']} | Genre: {res_item['Found_Genre']}"
                                         )
                                     with col_c:
-                                        if st.button("✅ Accept & Update", key=f"accept_{res_item['Title']}"):
+                                        if st.button(
+                                            "✅ Accept & Update",
+                                            key=f"accept_{res_item['Title']}",
+                                        ):
                                             update_dict = {
-                                                "Year Released": res_item["Found_Year"],
-                                                "Rating": res_item["Found_Rating"],
-                                                "Length of Movie": res_item["Found_Length"],
-                                                "Genre": res_item["Found_Genre"],
-                                                "Image_Path": res_item["Found_Poster"]
+                                                "Year Released": res_item[
+                                                    "Found_Year"
+                                                ],
+                                                "Rating": res_item[
+                                                    "Found_Rating"
+                                                ],
+                                                "Length of Movie": res_item[
+                                                    "Found_Length"
+                                                ],
+                                                "Genre": res_item[
+                                                    "Found_Genre"
+                                                ],
+                                                "Image_Path": res_item[
+                                                    "Found_Poster"
+                                                ],
                                             }
-                                            if update_movie_in_csv("movies_and_tv_collection.csv", res_item["Title"], update_dict):
-                                                st.success(f"Updated '{res_item['Title']}'!")
+                                            if update_movie_in_csv(
+                                                "movies_and_tv_collection.csv",
+                                                res_item["Title"],
+                                                update_dict,
+                                            ):
+                                                st.success(
+                                                    f"Updated '{res_item['Title']}'!"
+                                                )
                                                 st.rerun()
 
             st.markdown("---")
