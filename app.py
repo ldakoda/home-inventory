@@ -71,7 +71,7 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. WEB EMOJI & IMAGE HELPERS
+# 2. ACCURATE REAL-WORLD WEB IMAGE SEARCH HELPER
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def search_emojis_online(search_query):
@@ -96,9 +96,39 @@ def search_emojis_online(search_query):
 
 
 def generate_web_image_url(query_text):
-    """Generates a reliable web-seeded image placeholder for inventory items."""
-    clean_q = urllib.parse.quote_plus(str(query_text).strip().lower())
-    return f"https://picsum.photos/seed/{hash(clean_q)}/400/300"
+    """Searches open web APIs (Wikimedia Commons & Wikipedia) for real photos matching the query."""
+    if not query_text or not str(query_text).strip():
+        return ""
+
+    clean_q = str(query_text).strip()
+
+    # 1. Query Wikimedia Commons API for authentic product/item photos
+    try:
+        encoded_q = urllib.parse.quote_plus(clean_q)
+        url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_q}&gsrlimit=1&prop=pageimages&pithumbsize=500&format=json"
+        res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
+        pages = res.get("query", {}).get("pages", {})
+        for _, page_data in pages.items():
+            thumbnail = page_data.get("thumbnail", {}).get("source")
+            if thumbnail:
+                return thumbnail
+    except Exception:
+        pass
+
+    # 2. Query Wikipedia API fallback
+    try:
+        encoded_q = urllib.parse.quote_plus(clean_q)
+        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded_q}&prop=pageimages&pithumbsize=500&format=json"
+        res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
+        pages = res.get("query", {}).get("pages", {})
+        for _, page_data in pages.items():
+            thumbnail = page_data.get("thumbnail", {}).get("source")
+            if thumbnail:
+                return thumbnail
+    except Exception:
+        pass
+
+    return ""
 
 
 # -----------------------------------------------------------------------------
@@ -154,7 +184,6 @@ def safe_load_csv(file_path, expected_columns):
         for col in expected_columns:
             if col not in df.columns:
                 df[col] = ""
-        # Ensure all columns are treated as object/string to avoid pandas dtype assignment errors
         return df.astype(object)
     except Exception as e:
         st.error(f"Error reading {file_path}: {e}")
@@ -780,7 +809,7 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH TYPE-SAFE WEB IMAGE AUTO-FILL
+    # 10. TAB RENDERING
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
@@ -850,10 +879,10 @@ if check_password():
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
-    # KITCHEN GEAR TAB (FIXED DTYPE BUG)
+    # KITCHEN GEAR TAB
     with tabs[3]:
         with st.expander("🛠️ Bulk Web Image Search & Auto-Fill (Kitchen & Decor)"):
-            st.write("Automatically search the web for missing images across Kitchen and Decor items:")
+            st.write("Automatically search Wikimedia and Wikipedia for authentic product photos across Kitchen and Decor items:")
             missing_k_mask = (
                 df_kitchen["Image_Path"].isna()
                 | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
@@ -866,25 +895,28 @@ if check_password():
                 st.warning(f"Found {len(missing_k_df)} kitchen/decor item(s) missing photos.")
                 if st.button("🌐 Web Auto-Fill Missing Kitchen Images", key="btn_kitchen_bulk_gen"):
                     k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
+                    matched_k_count = 0
                     for idx_k, k_row in missing_k_df.iterrows():
                         k_name = k_row["Name of Item"]
                         mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(k_name).lower().strip()
                         if mask_k.any():
-                            # Safely set value using loc with object dtype
-                            k_df_csv.loc[mask_k, "Image_Path"] = str(generate_web_image_url(k_name))
+                            found_url = generate_web_image_url(k_name)
+                            if found_url:
+                                k_df_csv.loc[mask_k, "Image_Path"] = str(found_url)
+                                matched_k_count += 1
                     k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
                     push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk web kitchen photo update")
-                    st.success("Auto-filled missing kitchen item photos via web search!")
+                    st.success(f"Discovered and auto-filled web photos for {matched_k_count} item(s)!")
                     st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
 
-    # DYNAMIC CUSTOM CATEGORIES TABS (FIXED DTYPE BUG)
+    # DYNAMIC CUSTOM CATEGORIES TABS
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
             with st.expander(f"🛠️ Bulk Web Image Search for {custom_cat['Name']}"):
-                st.write(f"Search the web in bulk to auto-populate missing item images in **{custom_cat['Name']}**:")
+                st.write(f"Search Wikimedia and Wikipedia in bulk to auto-populate photos in **{custom_cat['Name']}**:")
                 
                 c_df_loaded = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
                 missing_cust_mask = (
@@ -898,15 +930,19 @@ if check_password():
                 else:
                     st.warning(f"Found {len(missing_cust_df)} item(s) missing images in {custom_cat['Name']}.")
                     if st.button(f"🌐 Search & Auto-Fill Web Images for {custom_cat['Name']}", key=f"btn_bulk_cust_web_gen_{i}"):
+                        matched_c_count = 0
                         for idx_c, c_row in missing_cust_df.iterrows():
                             item_name_val = c_row[custom_cat["Primary_Col"]]
                             mask_c = c_df_loaded[custom_cat["Primary_Col"]].astype(str).str.lower().str.strip() == str(item_name_val).lower().strip()
                             if mask_c.any():
-                                c_df_loaded.loc[mask_c, "Image_Path"] = str(generate_web_image_url(item_name_val))
+                                found_url = generate_web_image_url(item_name_val)
+                                if found_url:
+                                    c_df_loaded.loc[mask_c, "Image_Path"] = str(found_url)
+                                    matched_c_count += 1
 
                         c_df_loaded.to_csv(custom_cat["File"], index=False)
                         push_csv_to_github(custom_cat["File"], f"Bulk web image fill for {custom_cat['Name']}")
-                        st.success(f"Auto-filled {len(missing_cust_df)} missing images via web search!")
+                        st.success(f"Discovered and auto-filled web photos for {matched_c_count} item(s)!")
                         st.rerun()
 
             st.markdown("---")
