@@ -461,21 +461,19 @@ if check_password():
     master_df = pd.concat([m_df, g_df, k_df], ignore_index=True)
 
     # -----------------------------------------------------------------------------
-    # 8. FINDER NAVIGATION TABS & FILTERING
+    # 8. GLOBAL SEARCH BAR & FINDER NAVIGATION TABS
     # -----------------------------------------------------------------------------
+    finder_search_q = st.text_input("🔍 Search Desktop Files...", key="finder_search_q")
+
+    if finder_search_q:
+        master_df = master_df[master_df["Name"].astype(str).str.contains(finder_search_q, case=False)]
+
     tab_all, tab_movies, tab_games, tab_kitchen = st.tabs([
         "🌐 All Files (Master)",
         "🎬 Movies & TV",
         "🎲 Board & Card Games",
         "🍳 Kitchen Gear"
     ])
-
-    search_col, filter_col = st.columns([4, 1])
-    with search_col:
-        finder_search_q = st.text_input("🔍 Search Desktop Files...", key="finder_search_q")
-
-    if finder_search_q:
-        master_df = master_df[master_df["Name"].astype(str).str.contains(finder_search_q, case=False)]
 
     def render_edit_drawer(unique_key_id, item_id, row, editable_cols, file_path, title_col):
         edit_inputs = {}
