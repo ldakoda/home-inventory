@@ -19,6 +19,7 @@ os.makedirs(IMAGE_DIR, exist_ok=True)
 # Fetch OMDb API Key securely from environment / GitHub Secrets
 OMDB_API_KEY = os.getenv("OMDB_KEY", "")
 
+
 # -----------------------------------------------------------------------------
 # 2. HELPER FUNCTIONS FOR RESILIENT CSV LOADING & SAVING
 # -----------------------------------------------------------------------------
@@ -611,9 +612,9 @@ if check_password():
 
                         if st.session_state.get("bulk_scan_results"):
                             st.markdown("#### Review Found Metadata")
-                            for res_item in st.session_state[
-                                "bulk_scan_results"
-                            ]:
+                            for res_item in list(
+                                st.session_state["bulk_scan_results"]
+                            ):
                                 with st.container(border=True):
                                     col_a, col_b, col_c = st.columns([1, 3, 1])
                                     with col_a:
@@ -657,6 +658,17 @@ if check_password():
                                                 res_item["Title"],
                                                 update_dict,
                                             ):
+                                                # Remove accepted item from list in session state
+                                                st.session_state[
+                                                    "bulk_scan_results"
+                                                ] = [
+                                                    item
+                                                    for item in st.session_state[
+                                                        "bulk_scan_results"
+                                                    ]
+                                                    if item["Title"]
+                                                    != res_item["Title"]
+                                                ]
                                                 st.success(
                                                     f"Updated '{res_item['Title']}'!"
                                                 )
