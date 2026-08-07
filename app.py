@@ -14,6 +14,25 @@ st.set_page_config(
     layout="wide",
 )
 
+# Custom CSS to eliminate excess Streamlit vertical padding in list view
+st.markdown(
+    """
+    <style>
+    /* Reduce container spacing for ultra-compact lists */
+    div[data-testid="stVerticalBlock"] > div {
+        gap: 0.2rem !important;
+    }
+    .compact-row {
+        display: flex;
+        align-items: center;
+        padding: 2px 0px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Directory for storing user-uploaded images locally
 IMAGE_DIR = "uploaded_images"
 os.makedirs(IMAGE_DIR, exist_ok=True)
@@ -511,7 +530,7 @@ if check_password():
                         st.success(f"Added '{title}' to Kitchen Gear database!")
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH FIXED ENCODING & METADATA FALLBACK
+    # 7. PAGE: BROWSE INVENTORY WITH ULTRA-COMPACT LIST VIEW
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -623,32 +642,36 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- 📋 SINGLE ROW EXCEL LIST VIEW ---
+            # --- 📋 ULTRA-COMPACT EXCEL SINGLE-ROW LIST VIEW ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
-                    c_img, c_info, c_edit = st.columns([0.6, 7.4, 1.0], vertical_alignment="center")
+                    
+                    # Use minimal column proportions and horizontal alignment
+                    c_img, c_info, c_edit = st.columns([0.4, 7.8, 0.8], vertical_alignment="center")
 
                     with c_img:
                         img_val = row.get(image_col, "")
                         if pd.notna(img_val) and str(img_val).strip() != "":
-                            st.image(str(img_val), width=40)
+                            st.image(str(img_val), width=28)
                         else:
                             st.caption("📷")
 
                     with c_info:
                         inline_details = summary_inline_func(row)
                         st.markdown(
-                            f"**{item_id}** &nbsp;|&nbsp; <span style='color:#888;'>{inline_details}</span>",
+                            f"<div style='margin:0; padding:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;'>"
+                            f"<strong>{item_id}</strong> &nbsp;|&nbsp; "
+                            f"<span style='color:#a0a0a0; font-size:0.9em;'>{inline_details}</span>"
+                            f"</div>",
                             unsafe_allow_html=True,
                         )
 
                     with c_edit:
-                        with st.expander("✏️ Edit"):
+                        with st.expander("✏️"):
                             render_edit_form(
                                 idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                             )
-                    st.divider()
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
             """Form renderer with encoded query search & title fallback."""
@@ -669,7 +692,6 @@ if check_password():
                             clean_q = edit_search_q.strip()
                             encoded_q = urllib.parse.quote_plus(clean_q)
                             
-                            # Primary search via search endpoint (?s=)
                             url_s = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
                             res_s = requests.get(url_s, timeout=4).json()
                             
@@ -677,7 +699,6 @@ if check_password():
                             if res_s.get("Response") == "True":
                                 matches = res_s.get("Search", [])
                             else:
-                                # Fallback: Direct exact title query (?t=)
                                 url_t = f"http://www.omdbapi.com/?t={encoded_q}&apikey={OMDB_API_KEY}"
                                 res_t = requests.get(url_t, timeout=4).json()
                                 if res_t.get("Response") == "True":
