@@ -57,41 +57,48 @@ st.markdown(
 IMAGE_DIR = "uploaded_images"
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
+# API Keys & Secrets
 OMDB_API_KEY = os.getenv("OMDB_KEY", "")
 BGG_API_TOKEN = os.getenv("BGG_TOKEN", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "")
+EMOJI_API_KEY = os.getenv("EMOJI_API_KEY", "")
 
-# Default Fallback Emojis
-DEFAULT_EMOJI_GRID = ["📦", "📁", "🧰", "🎬", "🎲", "🍳", "🛠️", "💻", "🎮", "📚", "👕", "🛋️", "📷", "🔒", "🏠"]
+# Expanded Default Emoji Array (Fallback)
+DEFAULT_EMOJI_GRID = [
+    "📦", "📁", "🧰", "🎬", "🎲", "🍳", "🛠️", "💻", "🎮", "📚",
+    "👕", "🛋️", "📷", "🔒", "🏠", "🍕", "🚲", "🚗", "🎨", "👟"
+]
 
 
 # -----------------------------------------------------------------------------
-# 2. WEB EMOJI SEARCH HELPER (LIVE WEB QUERY)
+# 2. WEB EMOJI SEARCH HELPER (USING SECURE EMOJI_API_KEY)
 # -----------------------------------------------------------------------------
 @st.cache_data(ttl=3600)
 def search_emojis_online(search_query):
-    """Fetches matching unicode emojis via open web API."""
+    """Fetches matching unicode emojis via Emoji API using user's secret key."""
     if not search_query or not search_query.strip():
         return DEFAULT_EMOJI_GRID
 
+    # Check if user API key is provided
+    if not EMOJI_API_KEY:
+        st.warning("⚠️ `EMOJI_API_KEY` secret is not configured in Streamlit. Showing default emoji grid.")
+        return [em for em in DEFAULT_EMOJI_GRID if search_query.lower() in em] or DEFAULT_EMOJI_GRID
+
     try:
         q = urllib.parse.quote_plus(search_query.strip().lower())
-        url = f"https://emoji-api.com/emojis?search={q}&access_key=77626372b3a0e2a22906b3a0428648e1d2e1320d"
+        url = f"https://emoji-api.com/emojis?search={q}&access_key={EMOJI_API_KEY}"
         res = requests.get(url, timeout=4)
         if res.status_code == 200:
             data = res.json()
             if isinstance(data, list) and len(data) > 0:
                 return [item["character"] for item in data[:30] if "character" in item]
-    except Exception:
-        pass
+        elif res.status_code == 429:
+            st.toast("⚠️ Emoji API rate limit reached. Using fallback icons.", icon="⌛")
+    except Exception as e:
+        st.caption(f"Emoji search error: {e}")
 
-    # Local fallback search if web query encounters rate limits or offline state
-    fallback_matches = []
-    for em in DEFAULT_EMOJI_GRID:
-        if search_query.lower() in em:
-            fallback_matches.append(em)
-    return fallback_matches or DEFAULT_EMOJI_GRID
+    return DEFAULT_EMOJI_GRID
 
 
 # -----------------------------------------------------------------------------
@@ -764,7 +771,7 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH DYNAMIC ONLINE EMOJI WEB SEARCH
+    # 10. TAB RENDERING WITH SECURE ONLINE EMOJI API SEARCH
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
@@ -782,7 +789,7 @@ if check_password():
         with tabs[4 + i]:
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
 
-    # "➕ Add Category" Builder Tab with Web-Based Emoji Search
+    # "➕ Add Category" Builder Tab
     with tabs[-1]:
         st.subheader("🛠️ Create New Inventory Category")
         st.markdown("Configure a new inventory category schema. The app will automatically create a dedicated CSV file, sync it with GitHub, and generate custom forms for it.")
@@ -793,7 +800,6 @@ if check_password():
         
         emoji_search_q = st.text_input("🌐 Search Web Emoji Database", placeholder="Type keywords like 'pizza', 'camera', 'tool', 'car'...", key="web_emoji_search_q")
         
-        # Query online web API for emojis matching search query
         web_emojis = search_emojis_online(emoji_search_q)
 
         with st.expander(f"🎨 Web Search Results ({len(web_emojis)} found | Current Selected: {selected_emoji})", expanded=True):
