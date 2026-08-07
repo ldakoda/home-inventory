@@ -94,87 +94,67 @@ def safe_load_csv(file_path, expected_columns):
         return pd.DataFrame(columns=expected_columns)
 
 
-def update_movie_in_csv(file_path, title, new_data_dict):
-    """Updates missing metadata for a specific title directly in the CSV."""
-    if not os.path.exists(file_path):
+def fetch_collection_movies(collection_title):
+    """Detects collection keywords and attempts to fetch individual film entries."""
+    if not OMDB_API_KEY:
+        return []
+    
+    clean_q = collection_title.lower()
+    # Strip common collection keywords for movie lookup
+    keywords = ["collection", "trilogy", "quadrilogy", "anthology", "series", "box set", "film set", "bundle", "franchise", "1-", "2-", "3-", "4-", "5-", "6-", "7-", "8-", "9-", "movie", "films"]
+    search_term = clean_q
+    for kw in keywords:
+        search_term = search_term.replace(kw, "")
+    search_term = search_term.strip()
+
+    if not search_term:
+        search_term = collection_title
+
+    try:
+        encoded_q = urllib.parse.quote_plus(search_term)
+        url = f"http://www.omdbapi.com/?s={encoded_q}&type=movie&apikey={OMDB_API_KEY}"
+        res = requests.get(url, timeout=5).json()
+
+        if res.get("Response") == "True":
+            results = res.get("Search", [])
+            # Fetch detailed metadata for each matching title in the collection
+            detailed_items = []
+            for item in results[:8]:  # Limit to 8 titles to prevent API overload
+                d_url = f"http://www.omdbapi.com/?i={item['imdbID']}&apikey={OMDB_API_KEY}"
+                d_res = requests.get(d_url, timeout=4).json()
+                if d_res.get("Response") == "True":
+                    detailed_items.append({
+                        "Title": d_res.get("Title", ""),
+                        "Year Released": d_res.get("Year", ""),
+                        "Rating": d_res.get("Rated", ""),
+                        "Length of Movie": d_res.get("Runtime", ""),
+                        "Type": d_res.get("Type", "movie").capitalize(),
+                        "Genre": d_res.get("Genre", ""),
+                        "Image_Path": d_res.get("Poster", "") if d_res.get("Poster") != "N/A" else ""
+                    })
+            return detailed_items
+    except Exception as e:
+        st.error(f"Error expanding collection: {e}")
+    return []
+
+
+def save_multiple_movies_to_csv(file_path, movies_list):
+    """Appends multiple movie dicts to the CSV at once and syncs with GitHub."""
+    expected_cols = ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"]
+    existing_df = safe_load_csv(file_path, expected_cols)
+    new_df = pd.DataFrame(movies_list)
+    
+    # Filter out duplicates already in CSV by lower Title
+    existing_titles = set(existing_df["Title"].astype(str).str.lower().str.strip())
+    new_df = new_df[~new_df["Title"].astype(str).str.lower().str.strip().isin(existing_titles)]
+    
+    if new_df.empty:
+        st.warning("All titles in this collection already exist in your inventory!")
         return False
 
-    df = safe_load_csv(
-        file_path,
-        [
-            "Title",
-            "Rating",
-            "Year Released",
-            "Length of Movie",
-            "Type",
-            "Genre",
-            "Image_Path",
-        ],
-    )
-
-    mask = (
-        df["Title"]
-        .astype(str)
-        .str.lower()
-        .str.strip()
-        == str(title).lower().strip()
-    )
-    if not mask.any():
-        return False
-
-    df = df.astype(object)
-    idx = df[mask].index[0]
-    for key, val in new_data_dict.items():
-        if val and str(val).strip() != "":
-            df.at[idx, key] = str(val)
-
-    df.to_csv(file_path, index=False)
-    push_csv_to_github(file_path, f"Update metadata for {title}")
-    return True
-
-
-def bulk_update_movies_in_csv(file_path, updates_list):
-    """Batch updates multiple movie entries at once in the CSV."""
-    if not os.path.exists(file_path):
-        return False
-
-    df = safe_load_csv(
-        file_path,
-        [
-            "Title",
-            "Rating",
-            "Year Released",
-            "Length of Movie",
-            "Type",
-            "Genre",
-            "Image_Path",
-        ],
-    )
-    df = df.astype(object)
-
-    for item in updates_list:
-        mask = (
-            df["Title"]
-            .astype(str)
-            .str.lower()
-            .str.strip()
-            == str(item["Title"]).lower().strip()
-        )
-        if mask.any():
-            idx = df[mask].index[0]
-            update_dict = {
-                "Year Released": item["Found_Year"],
-                "Rating": item["Found_Rating"],
-                "Length of Movie": item["Found_Length"],
-                "Genre": item["Found_Genre"],
-                "Image_Path": item["Found_Poster"],
-            }
-            for k, v in update_dict.items():
-                if v and str(v).strip() != "":
-                    df.at[idx, k] = str(v)
-
-    df.to_csv(file_path, index=False)
-    push_csv_to_github(file_path, "Bulk audit metadata update")
+    updated_df = pd.concat([existing_df, new_df], ignore_index=True)
+    updated_df.to_csv(file_path, index=False)
+    push_csv_to_github(file_path, f"Add collection ({len(new_df)} movies)")
     return True
 
 
@@ -251,7 +231,7 @@ if check_password():
         st.rerun()
 
     # -----------------------------------------------------------------------------
-    # 6. PAGE: ADD NEW ITEM
+    # 6. PAGE: ADD NEW ITEM (WITH SMART COLLECTION UNPACKING)
     # -----------------------------------------------------------------------------
     if app_mode == "➕ Add New Item":
         st.title("➕ Add New Inventory Item")
@@ -263,19 +243,17 @@ if check_password():
 
         # --- CATEGORY 1: MOVIES & TV ---
         if category == "Movies & TV":
-            st.subheader("Movie / TV Show Entry")
+            st.subheader("Movie / TV Show / Collection Entry")
 
             if not OMDB_API_KEY:
-                st.warning(
-                    "⚠️ `OMDB_KEY` environment secret is not set. You can manually enter movie details below."
-                )
+                st.warning("⚠️ `OMDB_KEY` secret is not set. You can manually enter movie details below.")
 
-            st.markdown("#### 1. Search Movie Database")
+            st.markdown("#### 1. Search Movie Database or Collection")
             col_search1, col_search2 = st.columns([3, 1])
             with col_search1:
                 search_title = st.text_input(
-                    "Search Title",
-                    placeholder="e.g., Avatar, Batman, Star Wars",
+                    "Search Title or Collection",
+                    placeholder="e.g., The Dark Knight Trilogy, Star Wars, Avatar",
                 )
             with col_search2:
                 st.write("")
@@ -287,34 +265,75 @@ if check_password():
                     st.error("Missing OMDb API Key in environment secrets.")
                 else:
                     with st.spinner(f"Searching for '{search_title}'..."):
-                        try:
-                            encoded_q = urllib.parse.quote_plus(search_title.strip())
-                            url = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
-                            res = requests.get(url, timeout=5).json()
+                        # Check if title looks like a collection
+                        collection_keywords = ["collection", "trilogy", "quadrilogy", "anthology", "series", "box set", "bundle", "franchise", "films"]
+                        is_collection = any(kw in search_title.lower() for kw in collection_keywords)
 
-                            if res.get("Response") == "True":
-                                st.session_state["search_results"] = res.get("Search", [])
-                                st.success(f"Found {len(st.session_state['search_results'])} match(es)!")
-                            else:
+                        if is_collection:
+                            unpacked_movies = fetch_collection_movies(search_title)
+                            if unpacked_movies:
+                                st.session_state["unpacked_collection"] = unpacked_movies
                                 st.session_state["search_results"] = []
-                                st.error(f"No results found for '{search_title}'.")
-                        except Exception as e:
-                            st.error(f"Error fetching search results: {e}")
+                                st.success(f"📦 Detected Collection! Found {len(unpacked_movies)} individual movies.")
+                            else:
+                                is_collection = False
 
+                        if not is_collection:
+                            st.session_state.pop("unpacked_collection", None)
+                            try:
+                                encoded_q = urllib.parse.quote_plus(search_title.strip())
+                                url = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
+                                res = requests.get(url, timeout=5).json()
+
+                                if res.get("Response") == "True":
+                                    st.session_state["search_results"] = res.get("Search", [])
+                                    st.success(f"Found {len(st.session_state['search_results'])} match(es)!")
+                                else:
+                                    st.session_state["search_results"] = []
+                                    st.error(f"No results found for '{search_title}'.")
+                            except Exception as e:
+                                st.error(f"Error fetching search results: {e}")
+
+            # --- SMART COLLECTION UNPACKING PREVIEW ---
+            if st.session_state.get("unpacked_collection"):
+                st.markdown("---")
+                st.markdown("#### 📦 Collection Unpacking Options")
+                unpacked_list = st.session_state["unpacked_collection"]
+
+                st.write("The following movies were found in this collection:")
+                col_grid = st.columns(min(len(unpacked_list), 4))
+                for i, m_item in enumerate(unpacked_list):
+                    c = col_grid[i % 4]
+                    with c:
+                        if m_item["Image_Path"]:
+                            st.image(m_item["Image_Path"], width=90)
+                        st.caption(f"**{m_item['Title']}** ({m_item['Year Released']})")
+
+                col_u1, col_u2 = st.columns([1, 1])
+                with col_u1:
+                    if st.button("🚀 Add All Individual Movies to Inventory"):
+                        if save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_list):
+                            st.success(f"Successfully added {len(unpacked_list)} movies from the collection!")
+                            st.session_state.pop("unpacked_collection", None)
+                            st.rerun()
+
+                with col_u2:
+                    if st.button("📦 Add as Single Collection Entry Instead"):
+                        st.session_state["m_title"] = search_title
+                        st.session_state.pop("unpacked_collection", None)
+                        st.info("Switched to single entry form below.")
+
+            # --- SINGLE ITEM SELECTION FROM SEARCH RESULTS ---
             if st.session_state.get("search_results"):
                 st.markdown("---")
                 st.markdown("#### 2. Select the Correct Match")
 
                 options = {
-                    f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m[
-                        "imdbID"
-                    ]
+                    f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m["imdbID"]
                     for m in st.session_state["search_results"]
                 }
 
-                selected_label = st.selectbox(
-                    "Choose from search results:", list(options.keys())
-                )
+                selected_label = st.selectbox("Choose from search results:", list(options.keys()))
                 selected_imdb_id = options[selected_label]
 
                 if selected_imdb_id:
@@ -327,27 +346,15 @@ if check_password():
                         with col_preview1:
                             poster = full_res.get("Poster", "")
                             if poster and poster != "N/A":
-                                st.image(
-                                    poster,
-                                    caption="Movie Poster",
-                                    use_container_width=True,
-                                )
+                                st.image(poster, caption="Movie Poster", use_container_width=True)
                             else:
                                 st.caption("📷 No Poster Available")
 
                         with col_preview2:
-                            st.subheader(
-                                f"{full_res.get('Title')} ({full_res.get('Year')})"
-                            )
-                            st.markdown(
-                                f"**Type:** {full_res.get('Type', '').capitalize()} | **Rated:** {full_res.get('Rated')}"
-                            )
-                            st.markdown(
-                                f"**Runtime:** {full_res.get('Runtime')} | **Genre:** {full_res.get('Genre')}"
-                            )
-                            st.write(
-                                f"**Plot:** {full_res.get('Plot', 'N/A')}"
-                            )
+                            st.subheader(f"{full_res.get('Title')} ({full_res.get('Year')})")
+                            st.markdown(f"**Type:** {full_res.get('Type', '').capitalize()} | **Rated:** {full_res.get('Rated')}")
+                            st.markdown(f"**Runtime:** {full_res.get('Runtime')} | **Genre:** {full_res.get('Genre')}")
+                            st.write(f"**Plot:** {full_res.get('Plot', 'N/A')}")
 
                             if st.button("✅ Accept & Use This Movie"):
                                 st.session_state["m_title"] = full_res.get("Title", "")
@@ -367,7 +374,7 @@ if check_password():
                 rating = st.text_input("Rating (PG, PG-13, R)", value=st.session_state.get("m_rating", ""))
                 year = st.text_input("Year Released", value=st.session_state.get("m_year", ""))
                 length = st.text_input("Length of Movie", value=st.session_state.get("m_length", ""))
-                m_type = st.selectbox("Type", ["Movie", "TV"], index=(0 if st.session_state.get("m_type", "Movie") == "Movie" else 1))
+                m_type = st.selectbox("Type", ["Movie", "TV", "Collection"], index=(0 if st.session_state.get("m_type", "Movie") == "Movie" else 1))
                 genre = st.text_input("Genre", value=st.session_state.get("m_genre", ""))
                 poster_link = st.text_input("Poster / Image URL", value=st.session_state.get("m_poster", ""))
 
@@ -394,37 +401,14 @@ if check_password():
                         }
 
                         file_path = "movies_and_tv_collection.csv"
-                        existing_df = safe_load_csv(
-                            file_path,
-                            [
-                                "Title",
-                                "Rating",
-                                "Year Released",
-                                "Length of Movie",
-                                "Type",
-                                "Genre",
-                                "Image_Path",
-                            ],
-                        )
-                        updated_df = pd.concat(
-                            [existing_df, pd.DataFrame([new_entry])],
-                            ignore_index=True,
-                        )
+                        existing_df = safe_load_csv(file_path, ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"])
+                        updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
                         updated_df.to_csv(file_path, index=False)
                         push_csv_to_github(file_path, f"Add movie '{title}'")
 
                         st.success(f"Added '{title}' to Movies & TV database!")
 
-                        for key in [
-                            "m_title",
-                            "m_year",
-                            "m_rating",
-                            "m_length",
-                            "m_type",
-                            "m_genre",
-                            "m_poster",
-                            "search_results",
-                        ]:
+                        for key in ["m_title", "m_year", "m_rating", "m_length", "m_type", "m_genre", "m_poster", "search_results", "unpacked_collection"]:
                             st.session_state.pop(key, None)
 
         # --- CATEGORY 2: BOARD & CARD GAMES ---
@@ -457,21 +441,8 @@ if check_password():
                             "Image_Path": image_path,
                         }
                         file_path = "board_and_card_games_collection.csv"
-                        existing_df = safe_load_csv(
-                            file_path,
-                            [
-                                "Title",
-                                "Number of Players",
-                                "Length of Play",
-                                "Age Rating",
-                                "Style of Game",
-                                "Image_Path",
-                            ],
-                        )
-                        updated_df = pd.concat(
-                            [existing_df, pd.DataFrame([new_entry])],
-                            ignore_index=True,
-                        )
+                        existing_df = safe_load_csv(file_path, ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+                        updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
                         updated_df.to_csv(file_path, index=False)
                         push_csv_to_github(file_path, f"Add game '{title}'")
                         st.success(f"Added '{title}' to Games database!")
@@ -481,10 +452,7 @@ if check_password():
             st.subheader("Kitchen Gear Entry")
             with st.form("kitchen_form", clear_on_submit=True):
                 title = st.text_input("Name of Item *")
-                eq_type = st.selectbox(
-                    "Type of Equipment",
-                    ["Appliance", "Cookware", "Appliance Accessory", "Utensil"],
-                )
+                eq_type = st.selectbox("Type of Equipment", ["Appliance", "Cookware", "Appliance Accessory", "Utensil"])
                 manual = st.text_input("Instruction Manual Link (URL)")
                 uploaded_image = st.file_uploader("Upload Item Photo", type=["jpg", "png", "jpeg"])
 
@@ -505,61 +473,21 @@ if check_password():
                             "Image_Path": image_path,
                         }
                         file_path = "kitchen_gear_inventory_v2.csv"
-                        existing_df = safe_load_csv(
-                            file_path,
-                            [
-                                "Name of Item",
-                                "Type of Equipment",
-                                "Instruction Manual Link",
-                                "Image_Path",
-                            ],
-                        )
-                        updated_df = pd.concat(
-                            [existing_df, pd.DataFrame([new_entry])],
-                            ignore_index=True,
-                        )
+                        existing_df = safe_load_csv(file_path, ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
+                        updated_df = pd.concat([existing_df, pd.DataFrame([new_entry])], ignore_index=True)
                         updated_df.to_csv(file_path, index=False)
                         push_csv_to_github(file_path, f"Add kitchen item '{title}'")
                         st.success(f"Added '{title}' to Kitchen Gear database!")
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH RIGHT-ALIGNED EDIT & EXPANDABLE DRAWER
+    # 7. PAGE: BROWSE INVENTORY WITH RIGHT-ALIGNED EDIT & SMART UNPACKING DRAWER
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
 
-        df_movies = safe_load_csv(
-            "movies_and_tv_collection.csv",
-            [
-                "Title",
-                "Rating",
-                "Year Released",
-                "Length of Movie",
-                "Type",
-                "Genre",
-                "Image_Path",
-            ],
-        )
-        df_games = safe_load_csv(
-            "board_and_card_games_collection.csv",
-            [
-                "Title",
-                "Number of Players",
-                "Length of Play",
-                "Age Rating",
-                "Style of Game",
-                "Image_Path",
-            ],
-        )
-        df_kitchen = safe_load_csv(
-            "kitchen_gear_inventory_v2.csv",
-            [
-                "Name of Item",
-                "Type of Equipment",
-                "Instruction Manual Link",
-                "Image_Path",
-            ],
-        )
+        df_movies = safe_load_csv("movies_and_tv_collection.csv", ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"])
+        df_games = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+        df_kitchen = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
 
         # --- EXPLICIT TOP CONTROL BAR CONTAINER ---
         with st.container(border=True):
@@ -567,35 +495,19 @@ if check_password():
             with col_search:
                 global_search_q = st.text_input("🔍 Search items...", key="main_search_bar")
             with col_sort:
-                sort_by_col = st.selectbox(
-                    "Sort By:",
-                    ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Name of Item", "Type of Equipment"],
-                    key="main_sort_select",
-                )
+                sort_by_col = st.selectbox("Sort By:", ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Name of Item", "Type of Equipment"], key="main_sort_select")
             with col_order:
                 order_by = st.radio("Order:", ["Asc", "Desc"], horizontal=True, key="main_order_radio")
             with col_view:
                 layout_view = st.radio("Layout View:", ["🎴 Cards", "📋 List"], horizontal=True, key="main_view_radio")
 
-        tab_movies, tab_games, tab_kitchen = st.tabs(
-            ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
-        )
+        tab_movies, tab_games, tab_kitchen = st.tabs(["Movies & TV", "Board & Card Games", "Kitchen Gear"])
 
-        def display_inventory_items(
-            df,
-            title_col,
-            details_func,
-            summary_inline_func,
-            file_path,
-            editable_cols,
-            is_movie_tab=False,
-            image_col="Image_Path",
-        ):
+        def display_inventory_items(df, title_col, details_func, summary_inline_func, file_path, editable_cols, is_movie_tab=False, image_col="Image_Path"):
             if df.empty:
                 st.info("No items in this category yet.")
                 return
 
-            # Apply Search Filter
             if global_search_q:
                 mask = df[title_col].astype(str).str.contains(global_search_q, case=False)
                 df = df[mask]
@@ -604,14 +516,9 @@ if check_password():
                 st.info("No items matching your search.")
                 return
 
-            # Apply Sorting Filter
             is_asc = order_by == "Asc"
             if sort_by_col in df.columns:
-                df = df.sort_values(
-                    by=sort_by_col,
-                    ascending=is_asc,
-                    key=lambda x: x.astype(str).str.lower(),
-                )
+                df = df.sort_values(by=sort_by_col, ascending=is_asc, key=lambda x: x.astype(str).str.lower())
 
             # --- 🎴 CARDS VIEW ---
             if layout_view == "🎴 Cards":
@@ -631,11 +538,9 @@ if check_password():
                             st.write(details_func(row))
 
                             with st.expander(f"✏️ Edit / Delete '{item_id}'"):
-                                render_edit_form(
-                                    idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
-                                )
+                                render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab)
 
-            # --- 📋 LIST VIEW: RIGHT EDIT EXPANDER OPENING FULL-WIDTH BELOW ---
+            # --- 📋 LIST VIEW: RIGHT EDIT EXPANDER WITH FULL-WIDTH BELOW DRAWER ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
@@ -661,7 +566,6 @@ if check_password():
                             )
 
                         with c_edit:
-                            # State key tracking expander toggle
                             expander_key = f"expand_edit_{file_path}_{idx}"
                             if expander_key not in st.session_state:
                                 st.session_state[expander_key] = False
@@ -669,69 +573,75 @@ if check_password():
                             if st.button("✏️ Edit", key=f"btn_toggle_edit_{file_path}_{idx}"):
                                 st.session_state[expander_key] = not st.session_state[expander_key]
 
-                        # Full-width workspace container directly below the single row
                         if st.session_state.get(expander_key, False):
                             st.markdown("---")
                             st.subheader(f"✏️ Editing: {item_id}")
-                            render_edit_form(
-                                idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
-                            )
+                            render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab)
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
-            """Form renderer with encoded query search & title fallback."""
+            """Form renderer supporting single edits and collection splitting."""
             if is_movie_tab and OMDB_API_KEY:
-                st.markdown("##### 🔍 Search Metadata Database")
+                st.markdown("##### 🔍 Search Metadata / Split Collection")
                 col_m1, col_m2 = st.columns([3, 1])
                 with col_m1:
-                    edit_search_q = st.text_input(
-                        "Search Query",
-                        value=item_id,
-                        key=f"edit_search_q_{file_path}_{idx}",
-                    )
+                    edit_search_q = st.text_input("Search Title or Collection Query", value=item_id, key=f"edit_search_q_{file_path}_{idx}")
                 with col_m2:
                     st.write("")
                     st.write("")
-                    if st.button("Fetch Matches", key=f"btn_edit_search_{file_path}_{idx}"):
+                    if st.button("Fetch / Unpack", key=f"btn_edit_search_{file_path}_{idx}"):
                         try:
                             clean_q = edit_search_q.strip()
-                            encoded_q = urllib.parse.quote_plus(clean_q)
-                            
-                            url_s = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
-                            res_s = requests.get(url_s, timeout=4).json()
-                            
-                            matches = []
-                            if res_s.get("Response") == "True":
-                                matches = res_s.get("Search", [])
-                            else:
-                                url_t = f"http://www.omdbapi.com/?t={encoded_q}&apikey={OMDB_API_KEY}"
-                                res_t = requests.get(url_t, timeout=4).json()
-                                if res_t.get("Response") == "True":
-                                    matches = [{
-                                        "Title": res_t.get("Title"),
-                                        "Year": res_t.get("Year"),
-                                        "Type": res_t.get("Type", "movie"),
-                                        "imdbID": res_t.get("imdbID"),
-                                    }]
+                            collection_keywords = ["collection", "trilogy", "quadrilogy", "anthology", "series", "box set", "bundle", "franchise", "films"]
+                            is_collection = any(kw in clean_q.lower() for kw in collection_keywords)
 
-                            if matches:
-                                st.session_state[f"edit_matches_{idx}"] = matches
-                                st.success(f"Found {len(matches)} match(es)!")
-                            else:
-                                st.error(f"No results found for '{edit_search_q}'. Check API key or title spelling.")
+                            if is_collection:
+                                unpacked = fetch_collection_movies(clean_q)
+                                if unpacked:
+                                    st.session_state[f"edit_unpacked_{idx}"] = unpacked
+                                    st.session_state.pop(f"edit_matches_{idx}", None)
+                                    st.success(f"Found collection with {len(unpacked)} movies!")
+                                else:
+                                    is_collection = False
+
+                            if not is_collection:
+                                st.session_state.pop(f"edit_unpacked_{idx}", None)
+                                encoded_q = urllib.parse.quote_plus(clean_q)
+                                url_s = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
+                                res_s = requests.get(url_s, timeout=4).json()
+                                matches = []
+                                if res_s.get("Response") == "True":
+                                    matches = res_s.get("Search", [])
+                                else:
+                                    url_t = f"http://www.omdbapi.com/?t={encoded_q}&apikey={OMDB_API_KEY}"
+                                    res_t = requests.get(url_t, timeout=4).json()
+                                    if res_t.get("Response") == "True":
+                                        matches = [{"Title": res_t.get("Title"), "Year": res_t.get("Year"), "Type": res_t.get("Type", "movie"), "imdbID": res_t.get("imdbID")}]
+
+                                if matches:
+                                    st.session_state[f"edit_matches_{idx}"] = matches
+                                    st.success(f"Found {len(matches)} match(es)!")
+                                else:
+                                    st.error(f"No results found for '{edit_search_q}'.")
                         except Exception as e:
                             st.error(f"Error fetching metadata: {e}")
 
+                # Split collection options inside edit drawer
+                if st.session_state.get(f"edit_unpacked_{idx}"):
+                    unpacked_list = st.session_state[f"edit_unpacked_{idx}"]
+                    st.info("📦 This item appears to be a collection. Would you like to split it into separate entries?")
+                    if st.button("🚀 Split Collection & Replace Current Entry with All Films", key=f"btn_split_exec_{file_path}_{idx}"):
+                        # Delete existing collection item and replace with individual films
+                        save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col)
+                        save_multiple_movies_to_csv(file_path, unpacked_list)
+                        st.session_state.pop(f"edit_unpacked_{idx}", None)
+                        st.success("Split collection into separate movies!")
+                        st.rerun()
+
+                # Single match selector
                 if st.session_state.get(f"edit_matches_{idx}"):
                     matches = st.session_state[f"edit_matches_{idx}"]
-                    match_opts = {
-                        f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m["imdbID"]
-                        for m in matches
-                    }
-                    selected_match_label = st.selectbox(
-                        "Select from found results:",
-                        list(match_opts.keys()),
-                        key=f"select_edit_match_{file_path}_{idx}",
-                    )
+                    match_opts = {f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m["imdbID"] for m in matches}
+                    selected_match_label = st.selectbox("Select from found results:", list(match_opts.keys()), key=f"select_edit_match_{file_path}_{idx}")
                     selected_imdb_id = match_opts[selected_match_label]
 
                     if selected_imdb_id:
@@ -747,10 +657,7 @@ if check_password():
                                 else:
                                     st.caption("No Poster")
                             with col_p2:
-                                st.caption(
-                                    f"**{d_res.get('Title')}** ({d_res.get('Year')}) | "
-                                    f"Rated: {d_res.get('Rated')} | Genre: {d_res.get('Genre')}"
-                                )
+                                st.caption(f"**{d_res.get('Title')}** ({d_res.get('Year')}) | Rated: {d_res.get('Rated')} | Genre: {d_res.get('Genre')}")
 
                             if st.button("✅ Apply Changes to Form", key=f"btn_apply_edit_{file_path}_{idx}"):
                                 st.session_state[f"edit_{file_path}_{idx}_Title"] = d_res.get("Title", "")
@@ -760,7 +667,7 @@ if check_password():
                                 st.session_state[f"edit_{file_path}_{idx}_Type"] = d_res.get("Type", "movie").capitalize()
                                 st.session_state[f"edit_{file_path}_{idx}_Genre"] = d_res.get("Genre", "")
                                 st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = p_poster if p_poster != "N/A" else ""
-                                st.success("Loaded selected metadata! Review below and click 'Save Changes'.")
+                                st.success("Loaded selected metadata into fields below!")
                                 st.rerun()
 
                 st.markdown("---")
@@ -771,10 +678,7 @@ if check_password():
                 if input_key not in st.session_state:
                     st.session_state[input_key] = str(row.get(col_name, ""))
 
-                edit_inputs[col_name] = st.text_input(
-                    f"{col_name}",
-                    key=input_key,
-                )
+                edit_inputs[col_name] = st.text_input(f"{col_name}", key=input_key)
 
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
@@ -823,20 +727,14 @@ if check_password():
                                     url = f"http://www.omdbapi.com/?t={encoded_m}&apikey={OMDB_API_KEY}"
                                     res = requests.get(url, timeout=4).json()
                                     if res.get("Response") == "True":
-                                        scan_results.append(
-                                            {
-                                                "Title": m_title,
-                                                "Found_Year": res.get("Year", ""),
-                                                "Found_Rating": res.get("Rated", ""),
-                                                "Found_Length": res.get("Runtime", ""),
-                                                "Found_Genre": res.get("Genre", ""),
-                                                "Found_Poster": (
-                                                    res.get("Poster", "")
-                                                    if res.get("Poster") != "N/A"
-                                                    else ""
-                                                ),
-                                            }
-                                        )
+                                        scan_results.append({
+                                            "Title": m_title,
+                                            "Found_Year": res.get("Year", ""),
+                                            "Found_Rating": res.get("Rated", ""),
+                                            "Found_Length": res.get("Runtime", ""),
+                                            "Found_Genre": res.get("Genre", ""),
+                                            "Found_Poster": res.get("Poster", "") if res.get("Poster") != "N/A" else "",
+                                        })
                                 except Exception:
                                     pass
                                 progress_bar.progress((i + 1) / len(missing_df))
@@ -847,10 +745,7 @@ if check_password():
                             st.markdown("#### Review Found Metadata")
 
                             if st.button("⚡ Accept All Changes"):
-                                if bulk_update_movies_in_csv(
-                                    "movies_and_tv_collection.csv",
-                                    st.session_state["bulk_scan_results"],
-                                ):
+                                if bulk_update_movies_in_csv("movies_and_tv_collection.csv", st.session_state["bulk_scan_results"]):
                                     st.session_state["bulk_scan_results"] = []
                                     st.success("Updated and synced all missing metadata to GitHub!")
                                     st.rerun()
@@ -866,10 +761,7 @@ if check_password():
                                             st.caption("No poster")
                                     with col_b:
                                         st.write(f"**{res_item['Title']}**")
-                                        st.caption(
-                                            f"Year: {res_item['Found_Year']} | Rating: {res_item['Found_Rating']} | "
-                                            f"Runtime: {res_item['Found_Length']} | Genre: {res_item['Found_Genre']}"
-                                        )
+                                        st.caption(f"Year: {res_item['Found_Year']} | Rating: {res_item['Found_Rating']} | Runtime: {res_item['Found_Length']} | Genre: {res_item['Found_Genre']}")
                                     with col_c:
                                         if st.button("✅ Accept & Update", key=f"accept_{res_item['Title']}"):
                                             update_dict = {
@@ -879,16 +771,8 @@ if check_password():
                                                 "Genre": res_item["Found_Genre"],
                                                 "Image_Path": res_item["Found_Poster"],
                                             }
-                                            if update_movie_in_csv(
-                                                "movies_and_tv_collection.csv",
-                                                res_item["Title"],
-                                                update_dict,
-                                            ):
-                                                st.session_state["bulk_scan_results"] = [
-                                                    item
-                                                    for item in st.session_state["bulk_scan_results"]
-                                                    if item["Title"] != res_item["Title"]
-                                                ]
+                                            if update_movie_in_csv("movies_and_tv_collection.csv", res_item["Title"], update_dict):
+                                                st.session_state["bulk_scan_results"] = [item for item in st.session_state["bulk_scan_results"] if item["Title"] != res_item["Title"]]
                                                 st.success(f"Updated '{res_item['Title']}'!")
                                                 st.rerun()
 
@@ -896,19 +780,10 @@ if check_password():
             display_inventory_items(
                 df_movies,
                 "Title",
-                lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n"
-                f"**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
+                lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\nf'**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
                 lambda r: f"Type: {r.get('Type', '')} | Rating: {r.get('Rating', '')} | Year: {r.get('Year Released', '')} | Genre: {r.get('Genre', '')}",
                 "movies_and_tv_collection.csv",
-                [
-                    "Title",
-                    "Rating",
-                    "Year Released",
-                    "Length of Movie",
-                    "Type",
-                    "Genre",
-                    "Image_Path",
-                ],
+                ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"],
                 is_movie_tab=True,
             )
 
@@ -916,43 +791,18 @@ if check_password():
             display_inventory_items(
                 df_games,
                 "Title",
-                lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n"
-                f"**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
+                lambda r: f"**Players:** {r.get('Number of Players', '')}\n\nf'**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
                 lambda r: f"Players: {r.get('Number of Players', '')} | Length: {r.get('Length of Play', '')} | Age: {r.get('Age Rating', '')} | Style: {r.get('Style of Game', '')}",
                 "board_and_card_games_collection.csv",
-                [
-                    "Title",
-                    "Number of Players",
-                    "Length of Play",
-                    "Age Rating",
-                    "Style of Game",
-                    "Image_Path",
-                ],
+                ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"],
             )
 
         with tab_kitchen:
             display_inventory_items(
                 df_kitchen,
                 "Name of Item",
-                lambda r: f"**Type:** {r.get('Type of Equipment', '')}\n\n"
-                + (
-                    f"[📄 Manual Link]({r['Instruction Manual Link']})"
-                    if pd.notna(r.get("Instruction Manual Link"))
-                    and str(r.get("Instruction Manual Link")).startswith("http")
-                    else ""
-                ),
-                lambda r: f"Type: {r.get('Type of Equipment', '')} "
-                + (
-                    f"| [📄 Manual Link]({r['Instruction Manual Link']})"
-                    if pd.notna(r.get("Instruction Manual Link"))
-                    and str(r.get("Instruction Manual Link")).startswith("http")
-                    else ""
-                ),
+                lambda r: f"**Type:** {r.get('Type of Equipment', '')}\n\n" + (f"[📄 Manual Link]({r['Instruction Manual Link']})" if pd.notna(r.get("Instruction Manual Link")) and str(r.get("Instruction Manual Link")).startswith("http") else ""),
+                lambda r: f"Type: {r.get('Type of Equipment', '')} " + (f"| [📄 Manual Link]({r['Instruction Manual Link']})" if pd.notna(r.get("Instruction Manual Link")) and str(r.get("Instruction Manual Link")).startswith("http") else ""),
                 "kitchen_gear_inventory_v2.csv",
-                [
-                    "Name of Item",
-                    "Type of Equipment",
-                    "Instruction Manual Link",
-                    "Image_Path",
-                ],
+                ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"],
             )
