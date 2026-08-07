@@ -572,7 +572,7 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH DUAL VIEW MODES (CARDS VS LIST)
+    # 7. PAGE: BROWSE INVENTORY WITH SORTING, DUAL VIEWS & EDIT SUPPORT
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -610,34 +610,58 @@ if check_password():
             ],
         )
 
-        col_s1, col_s2 = st.columns([3, 1])
-        with col_s1:
-            search_query = st.text_input("🔍 Search items across categories...")
-        with col_s2:
-            view_mode = st.radio(
-                "Layout View:",
-                ["🎴 Grid Cards", "📋 Table List"],
-                horizontal=True,
-            )
-
         tab_movies, tab_games, tab_kitchen = st.tabs(
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
         )
 
-        def display_inventory_items(
+        def render_controls_and_display(
             df,
             title_col,
             details_func,
             summary_inline_func,
             file_path,
             editable_cols,
+            category_name,
             is_movie_tab=False,
             image_col="Image_Path",
         ):
+            col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([2.5, 1.5, 1, 1])
+
+            with col_ctrl1:
+                search_query = st.text_input(
+                    "🔍 Search items...", key=f"search_{category_name}"
+                )
+
+            with col_ctrl2:
+                # Dynamic list of available sort fields for this specific category
+                sort_options = [c for c in editable_cols if c != image_col]
+                selected_sort_col = st.selectbox(
+                    "Sort By:",
+                    sort_options,
+                    key=f"sort_col_{category_name}",
+                )
+
+            with col_ctrl3:
+                sort_order = st.radio(
+                    "Order:",
+                    ["Ascending", "Descending"],
+                    key=f"sort_order_{category_name}",
+                    horizontal=True,
+                )
+
+            with col_ctrl4:
+                view_mode = st.radio(
+                    "Layout View:",
+                    ["🎴 Cards", "📋 List"],
+                    key=f"view_mode_{category_name}",
+                    horizontal=True,
+                )
+
             if df.empty:
                 st.info("No items in this category yet.")
                 return
 
+            # Apply Search Filter
             if search_query:
                 mask = (
                     df[title_col]
@@ -650,8 +674,20 @@ if check_password():
                 st.info("No items matching your search.")
                 return
 
-            # --- OPTION A: GRID CARDS VIEW ---
-            if view_mode == "🎴 Grid Cards":
+            # Apply Sorting
+            is_ascending = sort_order == "Ascending"
+            if selected_sort_col in df.columns:
+                # Sort safely by filling NA with empty strings
+                df = df.sort_values(
+                    by=selected_sort_col,
+                    ascending=is_ascending,
+                    key=lambda x: x.astype(str).str.lower(),
+                )
+
+            st.markdown("---")
+
+            # --- RENDER OPTION A: GRID CARDS VIEW ---
+            if view_mode == "🎴 Cards":
                 cols = st.columns(3)
                 for idx, row in df.reset_index(drop=True).iterrows():
                     col = cols[idx % 3]
@@ -667,13 +703,12 @@ if check_password():
                             st.subheader(item_id)
                             st.write(details_func(row))
 
-                            # Edit/Delete Expander
                             with st.expander(f"✏️ Edit / Delete '{item_id}'"):
                                 render_edit_form(
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- OPTION B: COMPACT LIST VIEW (MICRO ICON ON RIGHT END) ---
+            # --- RENDER OPTION B: COMPACT LIST VIEW ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
@@ -687,7 +722,7 @@ if check_password():
                         with col_img:
                             img_val = row.get(image_col, "")
                             if pd.notna(img_val) and str(img_val).strip() != "":
-                                st.image(str(img_val), width=40)
+                                st.image(str(img_val), width=45)
                             else:
                                 st.caption("📷")
 
@@ -697,7 +732,7 @@ if check_password():
                             )
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
-            """Form renderer for editing row attributes."""
+            """Form renderer for editing row attributes with working metadata search."""
             if is_movie_tab and OMDB_API_KEY:
                 st.markdown("##### 🔍 Search & Auto-Fill Metadata")
                 col_m1, col_m2 = st.columns([3, 1])
@@ -725,69 +760,53 @@ if check_password():
                 if st.session_state.get(f"edit_matches_{idx}"):
                     matches = st.session_state[f"edit_matches_{idx}"]
                     opts = {
-                        f"{m['Title']} ({m.get('Year', 'N/A')})": m["imdbID"]
+                        f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m["imdbID"]
                         for m in matches
                     }
-                    selected_imdb = st.selectbox(
+                    selected_imdb_label = st.selectbox(
                         "Select correct match:",
                         list(opts.keys()),
                         key=f"select_edit_match_{file_path}_{idx}",
                     )
                     if st.button("✅ Load Into Form", key=f"btn_load_edit_{file_path}_{idx}"):
-                        d_url = f"http://www.omdbapi.com/?i={opts[selected_imdb]}&apikey={OMDB_API_KEY}"
+                        selected_imdb_id = opts[selected_imdb_label]
+                        d_url = f"http://www.omdbapi.com/?i={selected_imdb_id}&apikey={OMDB_API_KEY}"
                         d_res = requests.get(d_url, timeout=4).json()
                         if d_res.get("Response") == "True":
-                            st.session_state[f"override_{idx}_Title"] = d_res.get("Title", "")
-                            st.session_state[f"override_{idx}_Rating"] = d_res.get("Rated", "")
-                            st.session_state[f"override_{idx}_Year Released"] = d_res.get("Year", "")
-                            st.session_state[f"override_{idx}_Length of Movie"] = d_res.get("Runtime", "")
-                            st.session_state[f"override_{idx}_Type"] = d_res.get("Type", "movie").capitalize()
-                            st.session_state[f"override_{idx}_Genre"] = d_res.get("Genre", "")
+                            st.session_state[f"edit_{file_path}_{idx}_Title"] = d_res.get("Title", "")
+                            st.session_state[f"edit_{file_path}_{idx}_Rating"] = d_res.get("Rated", "")
+                            st.session_state[f"edit_{file_path}_{idx}_Year Released"] = d_res.get("Year", "")
+                            st.session_state[f"edit_{file_path}_{idx}_Length of Movie"] = d_res.get("Runtime", "")
+                            st.session_state[f"edit_{file_path}_{idx}_Type"] = d_res.get("Type", "movie").capitalize()
+                            st.session_state[f"edit_{file_path}_{idx}_Genre"] = d_res.get("Genre", "")
                             p_url = d_res.get("Poster", "")
-                            st.session_state[f"override_{idx}_Image_Path"] = p_url if p_url != "N/A" else ""
-                            st.success("Loaded metadata! Review and click 'Save Changes' below.")
+                            st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = p_url if p_url != "N/A" else ""
+                            st.success("Loaded metadata into fields below! Click 'Save Changes' to update.")
                             st.rerun()
 
                 st.markdown("---")
 
             edit_inputs = {}
             for col_name in editable_cols:
-                default_val = st.session_state.get(
-                    f"override_{idx}_{col_name}",
-                    str(row.get(col_name, "")),
-                )
+                input_key = f"edit_{file_path}_{idx}_{col_name}"
+                if input_key not in st.session_state:
+                    st.session_state[input_key] = str(row.get(col_name, ""))
+
                 edit_inputs[col_name] = st.text_input(
                     f"{col_name}",
-                    value=default_val,
-                    key=f"edit_{file_path}_{idx}_{col_name}",
+                    key=input_key,
                 )
 
             col_btn1, col_btn2 = st.columns([1, 1])
             with col_btn1:
-                if st.button(
-                    "💾 Save Changes",
-                    key=f"save_{file_path}_{idx}",
-                ):
-                    if save_edited_row(
-                        file_path,
-                        item_id,
-                        edit_inputs,
-                        title_col,
-                    ):
+                if st.button("💾 Save Changes", key=f"save_{file_path}_{idx}"):
+                    if save_edited_row(file_path, item_id, edit_inputs, title_col):
                         st.success(f"Saved changes to '{item_id}'!")
                         st.rerun()
 
             with col_btn2:
-                if st.button(
-                    "🗑️ Delete Item",
-                    key=f"del_{file_path}_{idx}",
-                ):
-                    if save_edited_row(
-                        file_path,
-                        item_id,
-                        {"_DELETE_": True},
-                        title_col,
-                    ):
+                if st.button("🗑️ Delete Item", key=f"del_{file_path}_{idx}"):
+                    if save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col):
                         st.warning(f"Deleted '{item_id}'.")
                         st.rerun()
 
@@ -948,7 +967,7 @@ if check_password():
                                                 st.rerun()
 
             st.markdown("---")
-            display_inventory_items(
+            render_controls_and_display(
                 df_movies,
                 "Title",
                 lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n"
@@ -964,16 +983,17 @@ if check_password():
                     "Genre",
                     "Image_Path",
                 ],
+                category_name="movies",
                 is_movie_tab=True,
             )
 
         with tab_games:
-            display_inventory_items(
+            render_controls_and_display(
                 df_games,
                 "Title",
                 lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n"
                 f"**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
-                lambda r: f"**Players:** {r.get('Number of Players', '')} | **Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
+                lambda r: f"**Players:** {r.get('Number of Players', '')} | **Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')} | **Style:** {r.get('Style of Game', '')}",
                 "board_and_card_games_collection.csv",
                 [
                     "Title",
@@ -983,10 +1003,11 @@ if check_password():
                     "Style of Game",
                     "Image_Path",
                 ],
+                category_name="games",
             )
 
         with tab_kitchen:
-            display_inventory_items(
+            render_controls_and_display(
                 df_kitchen,
                 "Name of Item",
                 lambda r: f"**Type:** {r.get('Type of Equipment', '')}\n\n"
@@ -1010,4 +1031,5 @@ if check_password():
                     "Instruction Manual Link",
                     "Image_Path",
                 ],
+                category_name="kitchen",
             )
