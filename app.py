@@ -56,7 +56,6 @@ def update_movie_in_csv(file_path, title, new_data_dict):
         ],
     )
 
-    # Locate row index matching title
     mask = (
         df["Title"]
         .astype(str)
@@ -67,13 +66,84 @@ def update_movie_in_csv(file_path, title, new_data_dict):
     if not mask.any():
         return False
 
-    # Convert DataFrame columns to object/string to prevent integer dtype conflicts
     df = df.astype(object)
-
     idx = df[mask].index[0]
     for key, val in new_data_dict.items():
         if val and str(val).strip() != "":
             df.at[idx, key] = str(val)
+
+    df.to_csv(file_path, index=False)
+    return True
+
+
+def bulk_update_movies_in_csv(file_path, updates_list):
+    """Batch updates multiple movie entries at once in the CSV."""
+    if not os.path.exists(file_path):
+        return False
+
+    df = safe_load_csv(
+        file_path,
+        [
+            "Title",
+            "Rating",
+            "Year Released",
+            "Length of Movie",
+            "Type",
+            "Genre",
+            "Image_Path",
+        ],
+    )
+    df = df.astype(object)
+
+    for item in updates_list:
+        mask = (
+            df["Title"]
+            .astype(str)
+            .str.lower()
+            .str.strip()
+            == str(item["Title"]).lower().strip()
+        )
+        if mask.any():
+            idx = df[mask].index[0]
+            update_dict = {
+                "Year Released": item["Found_Year"],
+                "Rating": item["Found_Rating"],
+                "Length of Movie": item["Found_Length"],
+                "Genre": item["Found_Genre"],
+                "Image_Path": item["Found_Poster"],
+            }
+            for k, v in update_dict.items():
+                if v and str(v).strip() != "":
+                    df.at[idx, k] = str(v)
+
+    df.to_csv(file_path, index=False)
+    return True
+
+
+def save_edited_row(file_path, original_title_or_name, updated_row_dict, key_col):
+    """Saves edited item attributes or handles deletion in the CSV."""
+    df = pd.read_csv(file_path, on_bad_lines="skip")
+    df = df.astype(object)
+
+    mask = (
+        df[key_col]
+        .astype(str)
+        .str.lower()
+        .str.strip()
+        == str(original_title_or_name).lower().strip()
+    )
+    if not mask.any():
+        return False
+
+    idx = df[mask].index[0]
+
+    # Handle item deletion
+    if updated_row_dict.get("_DELETE_"):
+        df = df.drop(idx).reset_index(drop=True)
+    else:
+        for k, v in updated_row_dict.items():
+            if k in df.columns:
+                df.at[idx, k] = str(v)
 
     df.to_csv(file_path, index=False)
     return True
@@ -150,7 +220,6 @@ if check_password():
                 st.write("")
                 search_btn = st.button("🔍 Search Database")
 
-            # Store search results in session state
             if search_btn and search_title:
                 if not OMDB_API_KEY:
                     st.error("Missing OMDb API Key in environment secrets.")
@@ -175,7 +244,6 @@ if check_password():
                         except Exception as e:
                             st.error(f"Error fetching search results: {e}")
 
-            # Display Search Results Dropdown & Selection Preview
             if st.session_state.get("search_results"):
                 st.markdown("---")
                 st.markdown("#### 2. Select the Correct Match")
@@ -334,7 +402,6 @@ if check_password():
                             f"Added '{title}' to Movies & TV database!"
                         )
 
-                        # Clear session state
                         for key in [
                             "m_title",
                             "m_year",
@@ -453,7 +520,7 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 6. PAGE: BROWSE INVENTORY
+    # 6. PAGE: BROWSE INVENTORY WITH EDIT / DELETE SUPPORT
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -497,8 +564,13 @@ if check_password():
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
         )
 
-        def display_cards(
-            df, title_col, details_func, image_col="Image_Path"
+        def display_editable_cards(
+            df,
+            title_col,
+            details_func,
+            file_path,
+            editable_cols,
+            image_col="Image_Path",
         ):
             if df.empty:
                 st.info("No items in this category yet.")
@@ -519,6 +591,7 @@ if check_password():
             cols = st.columns(3)
             for idx, row in df.reset_index(drop=True).iterrows():
                 col = cols[idx % 3]
+                item_id = str(row[title_col])
                 with col:
                     with st.container(border=True):
                         img_val = row.get(image_col, "")
@@ -527,11 +600,50 @@ if check_password():
                         else:
                             st.caption("📷 No image available")
 
-                        st.subheader(row[title_col])
+                        st.subheader(item_id)
                         st.write(details_func(row))
 
+                        # --- IN-LINE EDIT / DELETE FORM ---
+                        with st.expander(f"✏️ Edit / Delete '{item_id}'"):
+                            edit_inputs = {}
+                            for col_name in editable_cols:
+                                edit_inputs[col_name] = st.text_input(
+                                    f"{col_name}",
+                                    value=str(row.get(col_name, "")),
+                                    key=f"edit_{file_path}_{idx}_{col_name}",
+                                )
+
+                            col_btn1, col_btn2 = st.columns([1, 1])
+                            with col_btn1:
+                                if st.button(
+                                    "💾 Save Changes",
+                                    key=f"save_{file_path}_{idx}",
+                                ):
+                                    if save_edited_row(
+                                        file_path,
+                                        item_id,
+                                        edit_inputs,
+                                        title_col,
+                                    ):
+                                        st.success(f"Saved changes to '{item_id}'!")
+                                        st.rerun()
+
+                            with col_btn2:
+                                if st.button(
+                                    "🗑️ Delete Item",
+                                    key=f"del_{file_path}_{idx}",
+                                ):
+                                    if save_edited_row(
+                                        file_path,
+                                        item_id,
+                                        {"_DELETE_": True},
+                                        title_col,
+                                    ):
+                                        st.warning(f"Deleted '{item_id}'.")
+                                        st.rerun()
+
         with tab_movies:
-            # --- MISSING METADATA AUDIT TOOL ---
+            # --- BULK AUDIT TOOL WITH 'ACCEPT ALL' ---
             with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Metadata"):
                 if not OMDB_API_KEY:
                     st.error(
@@ -612,6 +724,20 @@ if check_password():
 
                         if st.session_state.get("bulk_scan_results"):
                             st.markdown("#### Review Found Metadata")
+
+                            # --- ACCEPT ALL BUTTON ---
+                            if st.button("⚡ Accept All Changes"):
+                                if bulk_update_movies_in_csv(
+                                    "movies_and_tv_collection.csv",
+                                    st.session_state["bulk_scan_results"],
+                                ):
+                                    st.session_state["bulk_scan_results"] = []
+                                    st.success(
+                                        "Updated all missing metadata successfully!"
+                                    )
+                                    st.rerun()
+
+                            st.markdown("---")
                             for res_item in list(
                                 st.session_state["bulk_scan_results"]
                             ):
@@ -658,7 +784,6 @@ if check_password():
                                                 res_item["Title"],
                                                 update_dict,
                                             ):
-                                                # Remove accepted item from list in session state
                                                 st.session_state[
                                                     "bulk_scan_results"
                                                 ] = [
@@ -675,23 +800,42 @@ if check_password():
                                                 st.rerun()
 
             st.markdown("---")
-            display_cards(
+            display_editable_cards(
                 df_movies,
                 "Title",
                 lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n"
                 f"**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
+                "movies_and_tv_collection.csv",
+                [
+                    "Title",
+                    "Rating",
+                    "Year Released",
+                    "Length of Movie",
+                    "Type",
+                    "Genre",
+                    "Image_Path",
+                ],
             )
 
         with tab_games:
-            display_cards(
+            display_editable_cards(
                 df_games,
                 "Title",
                 lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n"
                 f"**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
+                "board_and_card_games_collection.csv",
+                [
+                    "Title",
+                    "Number of Players",
+                    "Length of Play",
+                    "Age Rating",
+                    "Style of Game",
+                    "Image_Path",
+                ],
             )
 
         with tab_kitchen:
-            display_cards(
+            display_editable_cards(
                 df_kitchen,
                 "Name of Item",
                 lambda r: f"**Type:** {r.get('Type of Equipment', '')}\n\n"
@@ -701,4 +845,11 @@ if check_password():
                     and str(r.get("Instruction Manual Link")).startswith("http")
                     else ""
                 ),
+                "kitchen_gear_inventory_v2.csv",
+                [
+                    "Name of Item",
+                    "Type of Equipment",
+                    "Instruction Manual Link",
+                    "Image_Path",
+                ],
             )
