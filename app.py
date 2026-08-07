@@ -641,8 +641,8 @@ if check_password():
                     if st.button("🚀 Split Collection & Replace Current Entry with All Films", key=f"btn_split_exec_{file_path}_{idx}"):
                         save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col)
                         save_multiple_movies_to_csv(file_path, unpacked_list)
+                        st.session_state[f"expand_edit_{file_path}_{idx}"] = False
                         st.session_state.pop(f"edit_unpacked_{idx}", None)
-                        st.success("Split collection into separate movies!")
                         st.rerun()
 
                 if st.session_state.get(f"edit_matches_{idx}"):
@@ -691,15 +691,22 @@ if check_password():
             with col_btn1:
                 if st.button("💾 Save Changes", key=f"save_{file_path}_{idx}"):
                     if save_edited_row(file_path, item_id, edit_inputs, title_col):
+                        # Collapse edit drawer and clean up session state
                         st.session_state[f"expand_edit_{file_path}_{idx}"] = False
-                        st.success(f"Saved changes to '{item_id}'!")
+                        for col_name in editable_cols:
+                            st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
+                        st.session_state.pop(f"edit_matches_{idx}", None)
+                        st.session_state.pop(f"edit_unpacked_{idx}", None)
                         st.rerun()
 
             with col_btn2:
                 if st.button("🗑️ Delete Item", key=f"del_{file_path}_{idx}"):
                     if save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col):
                         st.session_state[f"expand_edit_{file_path}_{idx}"] = False
-                        st.warning(f"Deleted '{item_id}'.")
+                        for col_name in editable_cols:
+                            st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
+                        st.session_state.pop(f"edit_matches_{idx}", None)
+                        st.session_state.pop(f"edit_unpacked_{idx}", None)
                         st.rerun()
 
         # Render Active Category View
