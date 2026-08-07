@@ -572,7 +572,7 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH TOP CONTROL BAR
+    # 7. PAGE: BROWSE INVENTORY WITH TOP CONTROL CONTAINER
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -610,25 +610,21 @@ if check_password():
             ],
         )
 
-        # --- UNIFIED CONTROL BAR (ALWAYS VISIBLE AT TOP) ---
-        c_search, c_sort, c_order, c_view = st.columns([3, 2, 1.5, 2])
-
-        with c_search:
-            global_search_q = st.text_input("🔍 Search items across categories...")
-
-        with c_sort:
-            sort_by_col = st.selectbox(
-                "Sort By:",
-                ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Name of Item", "Type of Equipment"],
-            )
-
-        with c_order:
-            order_by = st.radio("Order:", ["Asc", "Desc"], horizontal=True)
-
-        with c_view:
-            layout_view = st.radio("Layout View:", ["🎴 Cards", "📋 List"], horizontal=True)
-
-        st.markdown("---")
+        # --- EXPLICIT TOP CONTROL BAR CONTAINER ---
+        with st.container(border=True):
+            col_search, col_sort, col_order, col_view = st.columns([3, 2, 1.5, 2])
+            with col_search:
+                global_search_q = st.text_input("🔍 Search items...", key="main_search_bar")
+            with col_sort:
+                sort_by_col = st.selectbox(
+                    "Sort By:",
+                    ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Name of Item", "Type of Equipment"],
+                    key="main_sort_select",
+                )
+            with col_order:
+                order_by = st.radio("Order:", ["Asc", "Desc"], horizontal=True, key="main_order_radio")
+            with col_view:
+                layout_view = st.radio("Layout View:", ["🎴 Cards", "📋 List"], horizontal=True, key="main_view_radio")
 
         tab_movies, tab_games, tab_kitchen = st.tabs(
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
@@ -666,7 +662,7 @@ if check_password():
                     key=lambda x: x.astype(str).str.lower(),
                 )
 
-            # --- RENDER CARDS VIEW ---
+            # --- CARDS VIEW ---
             if layout_view == "🎴 Cards":
                 cols = st.columns(3)
                 for idx, row in df.reset_index(drop=True).iterrows():
@@ -688,7 +684,7 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- RENDER LIST VIEW ---
+            # --- COMPACT LIST VIEW ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
@@ -712,57 +708,39 @@ if check_password():
                             )
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
-            """Form renderer for editing row attributes with metadata search."""
+            """Form renderer for editing row attributes with direct metadata search."""
             if is_movie_tab and OMDB_API_KEY:
-                st.markdown("##### 🔍 Search & Auto-Fill Metadata")
+                st.markdown("##### 🔍 Direct Metadata Fetch")
                 col_m1, col_m2 = st.columns([3, 1])
                 with col_m1:
                     edit_search_q = st.text_input(
-                        "Search Title",
+                        "Movie/TV Title to Lookup",
                         value=item_id,
                         key=f"edit_search_q_{file_path}_{idx}",
                     )
                 with col_m2:
                     st.write("")
                     st.write("")
-                    if st.button("Search & Fill", key=f"btn_edit_search_{file_path}_{idx}"):
+                    if st.button("Fetch & Fill", key=f"btn_edit_search_{file_path}_{idx}"):
                         try:
-                            url = f"http://www.omdbapi.com/?s={edit_search_q}&apikey={OMDB_API_KEY}"
+                            # Direct OMDb title lookup (?t=)
+                            url = f"http://www.omdbapi.com/?t={edit_search_q}&apikey={OMDB_API_KEY}"
                             res = requests.get(url, timeout=4).json()
                             if res.get("Response") == "True":
-                                st.session_state[f"edit_matches_{idx}"] = res.get("Search", [])
-                                st.success(f"Found {len(res.get('Search', []))} match(es)!")
+                                st.session_state[f"edit_{file_path}_{idx}_Title"] = res.get("Title", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Rating"] = res.get("Rated", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Year Released"] = res.get("Year", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Length of Movie"] = res.get("Runtime", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Type"] = res.get("Type", "movie").capitalize()
+                                st.session_state[f"edit_{file_path}_{idx}_Genre"] = res.get("Genre", "")
+                                p_url = res.get("Poster", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = p_url if p_url != "N/A" else ""
+                                st.success("Loaded metadata! Click 'Save Changes' below.")
+                                st.rerun()
                             else:
-                                st.error("No matches found.")
+                                st.error(f"No metadata found for '{edit_search_q}'.")
                         except Exception as e:
-                            st.error(f"Error: {e}")
-
-                if st.session_state.get(f"edit_matches_{idx}"):
-                    matches = st.session_state[f"edit_matches_{idx}"]
-                    opts = {
-                        f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m["imdbID"]
-                        for m in matches
-                    }
-                    selected_imdb_label = st.selectbox(
-                        "Select correct match:",
-                        list(opts.keys()),
-                        key=f"select_edit_match_{file_path}_{idx}",
-                    )
-                    if st.button("✅ Load Into Form", key=f"btn_load_edit_{file_path}_{idx}"):
-                        selected_imdb_id = opts[selected_imdb_label]
-                        d_url = f"http://www.omdbapi.com/?i={selected_imdb_id}&apikey={OMDB_API_KEY}"
-                        d_res = requests.get(d_url, timeout=4).json()
-                        if d_res.get("Response") == "True":
-                            st.session_state[f"edit_{file_path}_{idx}_Title"] = d_res.get("Title", "")
-                            st.session_state[f"edit_{file_path}_{idx}_Rating"] = d_res.get("Rated", "")
-                            st.session_state[f"edit_{file_path}_{idx}_Year Released"] = d_res.get("Year", "")
-                            st.session_state[f"edit_{file_path}_{idx}_Length of Movie"] = d_res.get("Runtime", "")
-                            st.session_state[f"edit_{file_path}_{idx}_Type"] = d_res.get("Type", "movie").capitalize()
-                            st.session_state[f"edit_{file_path}_{idx}_Genre"] = d_res.get("Genre", "")
-                            p_url = d_res.get("Poster", "")
-                            st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = p_url if p_url != "N/A" else ""
-                            st.success("Loaded metadata into fields below! Click 'Save Changes' to update.")
-                            st.rerun()
+                            st.error(f"Error fetching metadata: {e}")
 
                 st.markdown("---")
 
