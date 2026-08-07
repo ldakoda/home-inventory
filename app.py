@@ -58,7 +58,7 @@ if check_password():
         st.rerun()
 
     # -----------------------------------------------------------------------------
-    # 4. PAGE: ADD NEW ITEM (CATEGORY-SPECIFIC + AUTO-FILL + IMAGES)
+    # 4. PAGE: ADD NEW ITEM
     # -----------------------------------------------------------------------------
     if app_mode == "➕ Add New Item":
         st.title("➕ Add New Inventory Item")
@@ -77,74 +77,123 @@ if check_password():
                     "⚠️ `OMDB_KEY` environment secret is not set. You can still manually enter movie details below."
                 )
 
-            # Metadata Auto-Fill Section
+            # --- SEARCH & SELECT SECTION ---
+            st.markdown("#### 1. Search Movie Database")
             col_search1, col_search2 = st.columns([3, 1])
             with col_search1:
                 search_title = st.text_input(
-                    "Search Title to Auto-Fill Metadata",
-                    placeholder="e.g., Inception, Avatar",
+                    "Search Title",
+                    placeholder="e.g., Avatar, Batman, Star Wars",
                 )
             with col_search2:
                 st.write("")
                 st.write("")
-                if st.button("🔍 Auto-Fill Details"):
-                    if search_title:
-                        if not OMDB_API_KEY:
-                            st.error(
-                                "Missing OMDb API Key in environment secrets."
-                            )
-                        else:
-                            with st.spinner(f"Searching for '{search_title}'..."):
-                                try:
-                                    url = f"http://www.omdbapi.com/?t={search_title}&apikey={OMDB_API_KEY}"
-                                    res = requests.get(url, timeout=5).json()
+                search_btn = st.button("🔍 Search Database")
 
-                                    if res.get("Response") == "True":
-                                        st.session_state["m_title"] = res.get(
-                                            "Title", ""
-                                        )
-                                        st.session_state["m_year"] = res.get(
-                                            "Year", ""
-                                        )
-                                        st.session_state["m_rating"] = res.get(
-                                            "Rated", ""
-                                        )
-                                        st.session_state["m_length"] = res.get(
-                                            "Runtime", ""
-                                        )
-                                        st.session_state["m_type"] = res.get(
-                                            "Type", "movie"
-                                        ).capitalize()
-                                        st.session_state["m_genre"] = res.get(
-                                            "Genre", ""
-                                        )
+            # Store search results in session state
+            if search_btn and search_title:
+                if not OMDB_API_KEY:
+                    st.error("Missing OMDb API Key in environment secrets.")
+                else:
+                    with st.spinner(f"Searching for '{search_title}'..."):
+                        try:
+                            # Use OMDb Search Endpoint (?s=)
+                            url = f"http://www.omdbapi.com/?s={search_title}&apikey={OMDB_API_KEY}"
+                            res = requests.get(url, timeout=5).json()
 
-                                        poster_url = res.get("Poster", "")
-                                        if (
-                                            poster_url
-                                            and poster_url != "N/A"
-                                        ):
-                                            st.session_state["m_poster"] = (
-                                                poster_url
-                                            )
-                                        else:
-                                            st.session_state["m_poster"] = ""
+                            if res.get("Response") == "True":
+                                st.session_state["search_results"] = res.get(
+                                    "Search", []
+                                )
+                                st.success(
+                                    f"Found {len(st.session_state['search_results'])} match(es)!"
+                                )
+                            else:
+                                st.session_state["search_results"] = []
+                                st.error(
+                                    f"No results found for '{search_title}'."
+                                )
+                        except Exception as e:
+                            st.error(f"Error fetching search results: {e}")
 
-                                        st.success(
-                                            f"Found metadata for '{res.get('Title')}'!"
-                                        )
-                                    else:
-                                        st.error("No movie found with that title.")
-                                except Exception as e:
-                                    st.error(f"Error fetching metadata: {e}")
+            # Display Search Results Dropdown & Selection Card
+            if st.session_state.get("search_results"):
+                st.markdown("---")
+                st.markdown("#### 2. Select the Correct Match")
 
-            # Preview poster if found
-            if st.session_state.get("m_poster"):
-                st.image(
-                    st.session_state["m_poster"],
-                    caption="Poster Preview",
-                    width=120,
+                options = {
+                    f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m[
+                        "imdbID"
+                    ]
+                    for m in st.session_state["search_results"]
+                }
+
+                selected_label = st.selectbox(
+                    "Choose from search results:", list(options.keys())
                 )
+                selected_imdb_id = options[selected_label]
+
+                # Fetch full metadata for selected IMDb ID
+                if selected_imdb_id:
+                    detail_url = f"http://www.omdbapi.com/?i={selected_imdb_id}&apikey={OMDB_API_KEY}"
+                    full_res = requests.get(detail_url, timeout=5).json()
+
+                    if full_res.get("Response") == "True":
+                        col_preview1, col_preview2 = st.columns([1, 3])
+
+                        with col_preview1:
+                            poster = full_res.get("Poster", "")
+                            if poster and poster != "N/A":
+                                st.image(
+                                    poster,
+                                    caption="Movie Poster",
+                                    use_container_width=True,
+                                )
+                            else:
+                                st.caption("📷 No Poster Available")
+
+                        with col_preview2:
+                            st.subheader(
+                                f"{full_res.get('Title')} ({full_res.get('Year')})"
+                            )
+                            st.markdown(
+                                f"**Type:** {full_res.get('Type', '').capitalize()} | **Rated:** {full_res.get('Rated')}"
+                            )
+                            st.markdown(
+                                f"**Runtime:** {full_res.get('Runtime')} | **Genre:** {full_res.get('Genre')}"
+                            )
+                            st.write(
+                                f"**Plot:** {full_res.get('Plot', 'N/A')}"
+                            )
+
+                            if st.button("✅ Accept & Use This Movie"):
+                                st.session_state["m_title"] = full_res.get(
+                                    "Title", ""
+                                )
+                                st.session_state["m_year"] = full_res.get(
+                                    "Year", ""
+                                )
+                                st.session_state["m_rating"] = full_res.get(
+                                    "Rated", ""
+                                )
+                                st.session_state["m_length"] = full_res.get(
+                                    "Runtime", ""
+                                )
+                                st.session_state["m_type"] = full_res.get(
+                                    "Type", "movie"
+                                ).capitalize()
+                                st.session_state["m_genre"] = full_res.get(
+                                    "Genre", ""
+                                )
+                                st.session_state["m_poster"] = (
+                                    poster if poster != "N/A" else ""
+                                )
+                                st.success(
+                                    f"Loaded '{full_res.get('Title')}' into form below!"
+                                )
+
+            st.markdown("---")
+            st.markdown("#### 3. Verify & Save Entry")
 
             with st.form("movie_form", clear_on_submit=True):
                 title = st.text_input(
@@ -227,6 +276,7 @@ if check_password():
                             "m_type",
                             "m_genre",
                             "m_poster",
+                            "search_results",
                         ]:
                             st.session_state.pop(key, None)
 
@@ -326,12 +376,11 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 5. PAGE: BROWSE INVENTORY WITH IMAGES & CARDS
+    # 5. PAGE: BROWSE INVENTORY
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
 
-        # Load existing datasets safely
         df_movies = (
             pd.read_csv("movies_and_tv_collection.csv")
             if os.path.exists("movies_and_tv_collection.csv")
