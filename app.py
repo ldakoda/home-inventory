@@ -71,8 +71,36 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. ACCURATE REAL-WORLD WEB IMAGE SEARCH HELPER
+# 2. ACCURATE REAL-WORLD WEB IMAGE SEARCH & SAFE IMAGE DISPLAY HELPERS
 # -----------------------------------------------------------------------------
+def safe_st_image(img_path, width=None, use_container_width=False, default_emoji="📄"):
+    """Safely renders st.image only if the path is a valid URL or an existing local file."""
+    if not img_path or pd.isna(img_path):
+        st.write(default_emoji)
+        return
+
+    path_str = str(img_path).strip()
+    if not path_str:
+        st.write(default_emoji)
+        return
+
+    # Check if string is an HTTP/HTTPS web URL
+    is_url = path_str.startswith("http://") or path_str.startswith("https://")
+    # Check if string points to an existing local file
+    is_local_file = os.path.exists(path_str)
+
+    if is_url or is_local_file:
+        try:
+            if width:
+                st.image(path_str, width=width)
+            else:
+                st.image(path_str, use_container_width=use_container_width)
+        except Exception:
+            st.write(default_emoji)
+    else:
+        st.write(default_emoji)
+
+
 @st.cache_data(ttl=3600)
 def search_emojis_online(search_query):
     if not search_query or not search_query.strip():
@@ -757,10 +785,7 @@ if check_password():
 
                 with c1:
                     img_val = row.get("Image_Path", "")
-                    if pd.notna(img_val) and str(img_val).strip() != "":
-                        st.image(str(img_val), width=24)
-                    else:
-                        st.write("📄")
+                    safe_st_image(img_val, width=24, default_emoji="📄")
 
                 with c2:
                     st.markdown(f"**{item_name}**")
@@ -795,10 +820,7 @@ if check_password():
                 with col:
                     with st.container(border=True):
                         img_val = row.get("Image_Path", "")
-                        if pd.notna(img_val) and str(img_val).strip() != "":
-                            st.image(str(img_val), use_container_width=True)
-                        else:
-                            st.caption("📁 Folder Item")
+                        safe_st_image(img_val, use_container_width=True, default_emoji="📁")
 
                         st.markdown(f"**{item_name}**")
                         st.caption(cat)
@@ -880,7 +902,7 @@ if check_password():
                     for idx_g_res, g_item in enumerate(g_results):
                         with g_cols[idx_g_res % 3]:
                             with st.container(border=True):
-                                st.image(g_item["Found_Image"], use_container_width=True)
+                                safe_st_image(g_item["Found_Image"], use_container_width=True)
                                 st.markdown(f"**{g_item['Title']}**")
                                 if st.button("✅ Accept Image", key=f"btn_accept_single_g_{idx_g_res}"):
                                     g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
@@ -948,7 +970,7 @@ if check_password():
                         for idx_res, res_item in enumerate(k_results):
                             with rev_cols[idx_res % 3]:
                                 with st.container(border=True):
-                                    st.image(res_item["Found_Image"], use_container_width=True)
+                                    safe_st_image(res_item["Found_Image"], use_container_width=True)
                                     st.markdown(f"**{res_item['Name of Item']}**")
                                     if st.button("✅ Accept Image", key=f"btn_accept_single_k_{idx_res}"):
                                         k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
@@ -1019,7 +1041,7 @@ if check_password():
                             for idx_c_res, c_item in enumerate(cust_results):
                                 with c_rev_cols[idx_c_res % 3]:
                                     with st.container(border=True):
-                                        st.image(c_item["Found_Image"], use_container_width=True)
+                                        safe_st_image(c_item["Found_Image"], use_container_width=True)
                                         st.markdown(f"**{c_item['Item_Name']}**")
                                         if st.button("✅ Accept Image", key=f"btn_accept_single_c_{i}_{idx_c_res}"):
                                             c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
