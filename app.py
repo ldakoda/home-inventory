@@ -610,22 +610,22 @@ if check_password():
             ],
         )
 
-        # --- UNIFIED TOP CONTROL BAR ---
-        col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([3, 2, 1.5, 2])
+        # --- UNIFIED CONTROL BAR (ALWAYS VISIBLE AT TOP) ---
+        c_search, c_sort, c_order, c_view = st.columns([3, 2, 1.5, 2])
 
-        with col_ctrl1:
+        with c_search:
             global_search_q = st.text_input("🔍 Search items across categories...")
 
-        with col_ctrl2:
+        with c_sort:
             sort_by_col = st.selectbox(
                 "Sort By:",
-                ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Type of Equipment"],
+                ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Name of Item", "Type of Equipment"],
             )
 
-        with col_ctrl3:
+        with c_order:
             order_by = st.radio("Order:", ["Asc", "Desc"], horizontal=True)
 
-        with col_ctrl4:
+        with c_view:
             layout_view = st.radio("Layout View:", ["🎴 Cards", "📋 List"], horizontal=True)
 
         st.markdown("---")
@@ -648,7 +648,7 @@ if check_password():
                 st.info("No items in this category yet.")
                 return
 
-            # Filter Search
+            # Apply Search Filter
             if global_search_q:
                 mask = df[title_col].astype(str).str.contains(global_search_q, case=False)
                 df = df[mask]
@@ -657,7 +657,7 @@ if check_password():
                 st.info("No items matching your search.")
                 return
 
-            # Filter Sorting
+            # Apply Sorting Filter
             is_asc = order_by == "Asc"
             if sort_by_col in df.columns:
                 df = df.sort_values(
@@ -666,7 +666,7 @@ if check_password():
                     key=lambda x: x.astype(str).str.lower(),
                 )
 
-            # RENDER CARDS
+            # --- RENDER CARDS VIEW ---
             if layout_view == "🎴 Cards":
                 cols = st.columns(3)
                 for idx, row in df.reset_index(drop=True).iterrows():
@@ -688,7 +688,7 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # RENDER LIST
+            # --- RENDER LIST VIEW ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
