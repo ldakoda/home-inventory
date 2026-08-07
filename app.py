@@ -471,13 +471,10 @@ if check_password():
 
         def is_fuzzy_match(name):
             name_str = str(name).lower()
-            # 1. Direct substring match
             if query in name_str:
                 return True
-            # 2. Individual word match
             if any(q_word in name_str for q_word in query.split()):
                 return True
-            # 3. Fuzzy ratio match (catches typos)
             similarity = difflib.SequenceMatcher(None, query, name_str).ratio()
             return similarity >= 0.50
 
@@ -516,7 +513,6 @@ if check_password():
             st.info("Folder is empty or no files matched your search.")
             return
 
-        # Handle Sorting
         sort_col = st.session_state["finder_sort_col"]
         sort_asc = st.session_state["finder_sort_asc"]
 
@@ -529,11 +525,7 @@ if check_password():
 
         df_subset = df_subset.reset_index(drop=True)
 
-        # ---------------------------------------------------------
-        # VIEW MODE A: MACOS FINDER INTERACTIVE LIST VIEW
-        # ---------------------------------------------------------
         if st.session_state["finder_view_mode"] in ["List", "Columns"]:
-            # INTERACTIVE COLUMN HEADERS FOR SORTING
             h1, h2, h3, h4, h5 = st.columns([0.4, 3.5, 1.8, 1.8, 0.8])
 
             def make_header_arrow(col_name):
@@ -572,7 +564,6 @@ if check_password():
 
             st.markdown("<hr style='margin: 0 0 8px 0; border-color: #d0d0d0;' />", unsafe_allow_html=True)
 
-            # FINDER FILE ROWS
             for idx, row in df_subset.iterrows():
                 item_name = str(row["Name"])
                 cat = str(row["Category"])
@@ -610,9 +601,6 @@ if check_password():
                     st.subheader(f"✏️ Editing File: {item_name}")
                     render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
-        # ---------------------------------------------------------
-        # VIEW MODE B: MACOS FINDER ICON GRID VIEW
-        # ---------------------------------------------------------
         else:
             cols = st.columns(4)
             for idx, row in df_subset.iterrows():
@@ -638,15 +626,103 @@ if check_password():
                         with st.expander("✏️ Open / Edit"):
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
-    # Render Tabs
+    # -----------------------------------------------------------------------------
+    # 9. TAB CONTENT WITH CATEGORY-SPECIFIC BULK AUDIT TOOLS
+    # -----------------------------------------------------------------------------
     with tab_all:
         display_finder_view(master_df, "master")
 
     with tab_movies:
+        with st.expander("🛠️ Bulk Collection Unpacker"):
+            st.write("Search for a movie collection (e.g. 'Dark Knight Trilogy') to unpack into individual films:")
+            m_bulk_q = st.text_input("Collection Search Title", key="bulk_m_query")
+            if st.button("Unpack Collection", key="btn_bulk_m_exec"):
+                unpacked_f = fetch_collection_movies(m_bulk_q)
+                if unpacked_f:
+                    save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_f)
+                    st.success(f"Added {len(unpacked_f)} films!")
+                    st.rerun()
+
+        st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
 
     with tab_games:
+        with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Game Box Art"):
+            missing_games_mask = (
+                df_games["Image_Path"].isna()
+                | (df_games["Image_Path"].astype(str).str.strip() == "")
+            )
+            missing_games_df = df_games[missing_games_mask]
+
+            if missing_games_df.empty:
+                st.success("🎉 All titles in your Board & Card Games database have box art!")
+            else:
+                st.warning(f"Found {len(missing_games_df)} game(s) missing box art.")
+                if st.button("🔍 Scan BGG for Missing Box Art", key="btn_bgg_bulk_scan"):
+                    game_scan_results = []
+                    progress_bar = st.progress(0)
+
+                    for i, (_, g_row) in enumerate(missing_games_df.iterrows()):
+                        g_title = g_row["Title"]
+                        matches = fetch_bgg_game_matches(g_title)
+                        if matches:
+                            details = fetch_bgg_game_details(matches[0]["id"])
+                            if details.get("Image_Path"):
+                                game_scan_results.append({
+                                    "Title": g_title,
+                                    "Found_Image": details["Image_Path"],
+                                    "Found_Players": details.get("Number of Players", ""),
+                                })
+                        progress_bar.progress((i + 1) / len(missing_games_df))
+
+                    st.session_state["bulk_game_scan_results"] = game_scan_results
+
+                if st.session_state.get("bulk_game_scan_results"):
+                    st.markdown("#### Review Found Game Box Art")
+                    if st.button("⚡ Accept All Game Updates", key="btn_accept_bgg_bulk"):
+                        updates = st.session_state["bulk_game_scan_results"]
+                        g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+                        for item in updates:
+                            mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
+                            if mask_g.any():
+                                idx_g = g_df_csv[mask_g].index[0]
+                                if item["Found_Image"]:
+                                    g_df_csv.at[idx_g, "Image_Path"] = item["Found_Image"]
+                        g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
+                        push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
+                        st.session_state.pop("bulk_game_scan_results", None)
+                        st.success("Updated game box art!")
+                        st.rerun()
+
+        st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
 
     with tab_kitchen:
+        with st.expander("🛠️ Bulk Kitchen Photo Search & Auto-Fill"):
+            st.write("Scan kitchen items missing photos to auto-suggest image URLs:")
+            missing_k_mask = (
+                df_kitchen["Image_Path"].isna()
+                | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
+            )
+            missing_k_df = df_kitchen[missing_k_mask]
+
+            if missing_k_df.empty:
+                st.success("🎉 All items in your Kitchen Gear database have photos!")
+            else:
+                st.warning(f"Found {len(missing_k_df)} kitchen item(s) missing photos.")
+                if st.button("📷 Auto-Generate Kitchen Web Photos", key="btn_kitchen_bulk_gen"):
+                    k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
+                    for idx_k, k_row in missing_k_df.iterrows():
+                        k_name = k_row["Name of Item"]
+                        encoded_k = urllib.parse.quote_plus(k_name)
+                        mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(k_name).lower().strip()
+                        if mask_k.any():
+                            target_idx = k_df_csv[mask_k].index[0]
+                            k_df_csv.at[target_idx, "Image_Path"] = f"https://source.unsplash.com/400x300/?{encoded_k},kitchen"
+                    k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
+                    push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk kitchen photo update")
+                    st.success("Auto-generated product photos for kitchen gear!")
+                    st.rerun()
+
+        st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
