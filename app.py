@@ -610,69 +610,64 @@ if check_password():
             ],
         )
 
-        def display_category_view(
+        # --- UNIFIED TOP CONTROL BAR ---
+        col_ctrl1, col_ctrl2, col_ctrl3, col_ctrl4 = st.columns([3, 2, 1.5, 2])
+
+        with col_ctrl1:
+            global_search_q = st.text_input("🔍 Search items across categories...")
+
+        with col_ctrl2:
+            sort_by_col = st.selectbox(
+                "Sort By:",
+                ["Title", "Year Released", "Rating", "Genre", "Number of Players", "Type of Equipment"],
+            )
+
+        with col_ctrl3:
+            order_by = st.radio("Order:", ["Asc", "Desc"], horizontal=True)
+
+        with col_ctrl4:
+            layout_view = st.radio("Layout View:", ["🎴 Cards", "📋 List"], horizontal=True)
+
+        st.markdown("---")
+
+        tab_movies, tab_games, tab_kitchen = st.tabs(
+            ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
+        )
+
+        def display_inventory_items(
             df,
             title_col,
             details_func,
             summary_inline_func,
             file_path,
             editable_cols,
-            cat_key,
             is_movie_tab=False,
             image_col="Image_Path",
         ):
-            # --- GLOBAL CONTROL BAR FOR CURRENT TAB ---
-            c_search, c_sort, c_order, c_view = st.columns([3, 2, 1.5, 2])
-
-            with c_search:
-                search_q = st.text_input("🔍 Search items...", key=f"q_{cat_key}")
-
-            with c_sort:
-                sortable = [c for c in editable_cols if c != image_col]
-                sort_field = st.selectbox("Sort By:", sortable, key=f"sort_{cat_key}")
-
-            with c_order:
-                order_choice = st.radio(
-                    "Order:",
-                    ["Asc", "Desc"],
-                    key=f"order_{cat_key}",
-                    horizontal=True,
-                )
-
-            with c_view:
-                view_choice = st.radio(
-                    "Layout View:",
-                    ["🎴 Cards", "📋 List"],
-                    key=f"view_{cat_key}",
-                    horizontal=True,
-                )
-
             if df.empty:
                 st.info("No items in this category yet.")
                 return
 
-            # Apply Search
-            if search_q:
-                mask = df[title_col].astype(str).str.contains(search_q, case=False)
+            # Filter Search
+            if global_search_q:
+                mask = df[title_col].astype(str).str.contains(global_search_q, case=False)
                 df = df[mask]
 
             if df.empty:
                 st.info("No items matching your search.")
                 return
 
-            # Apply Sorting
-            is_asc = order_choice == "Asc"
-            if sort_field in df.columns:
+            # Filter Sorting
+            is_asc = order_by == "Asc"
+            if sort_by_col in df.columns:
                 df = df.sort_values(
-                    by=sort_field,
+                    by=sort_by_col,
                     ascending=is_asc,
                     key=lambda x: x.astype(str).str.lower(),
                 )
 
-            st.markdown("---")
-
-            # --- RENDER CARDS VIEW ---
-            if view_choice == "🎴 Cards":
+            # RENDER CARDS
+            if layout_view == "🎴 Cards":
                 cols = st.columns(3)
                 for idx, row in df.reset_index(drop=True).iterrows():
                     col = cols[idx % 3]
@@ -693,7 +688,7 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- RENDER COMPACT LIST VIEW ---
+            # RENDER LIST
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
@@ -794,10 +789,6 @@ if check_password():
                     if save_edited_row(file_path, item_id, {"_DELETE_": True}, title_col):
                         st.warning(f"Deleted '{item_id}'.")
                         st.rerun()
-
-        tab_movies, tab_games, tab_kitchen = st.tabs(
-            ["Movies & TV", "Board & Card Games", "Kitchen Gear"]
-        )
 
         with tab_movies:
             # Bulk Audit Tool
@@ -956,7 +947,7 @@ if check_password():
                                                 st.rerun()
 
             st.markdown("---")
-            display_category_view(
+            display_inventory_items(
                 df_movies,
                 "Title",
                 lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n"
@@ -972,12 +963,11 @@ if check_password():
                     "Genre",
                     "Image_Path",
                 ],
-                cat_key="movies",
                 is_movie_tab=True,
             )
 
         with tab_games:
-            display_category_view(
+            display_inventory_items(
                 df_games,
                 "Title",
                 lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n"
@@ -992,11 +982,10 @@ if check_password():
                     "Style of Game",
                     "Image_Path",
                 ],
-                cat_key="games",
             )
 
         with tab_kitchen:
-            display_category_view(
+            display_inventory_items(
                 df_kitchen,
                 "Name of Item",
                 lambda r: f"**Type:** {r.get('Type of Equipment', '')}\n\n"
@@ -1020,5 +1009,4 @@ if check_password():
                     "Instruction Manual Link",
                     "Image_Path",
                 ],
-                cat_key="kitchen",
             )
