@@ -572,7 +572,7 @@ if check_password():
                         )
 
     # -----------------------------------------------------------------------------
-    # 7. PAGE: BROWSE INVENTORY WITH TOP CONTROL CONTAINER
+    # 7. PAGE: BROWSE INVENTORY WITH EXCEL SINGLE-ROW LIST VIEW
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -662,7 +662,7 @@ if check_password():
                     key=lambda x: x.astype(str).str.lower(),
                 )
 
-            # --- CARDS VIEW ---
+            # --- 🎴 CARDS VIEW ---
             if layout_view == "🎴 Cards":
                 cols = st.columns(3)
                 for idx, row in df.reset_index(drop=True).iterrows():
@@ -684,28 +684,34 @@ if check_password():
                                     idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                                 )
 
-            # --- COMPACT LIST VIEW ---
+            # --- 📋 SINGLE ROW EXCEL LIST VIEW ---
             else:
                 for idx, row in df.reset_index(drop=True).iterrows():
                     item_id = str(row[title_col])
-                    with st.container(border=True):
-                        col_text, col_img = st.columns([5, 1])
+                    
+                    # Columns: [0] Image (Left), [1] Single-Line Info, [2] Edit Expander
+                    c_img, c_info, c_edit = st.columns([0.6, 7.4, 1.0], vertical_alignment="center")
 
-                        with col_text:
-                            st.markdown(f"### {item_id}")
-                            st.markdown(summary_inline_func(row))
+                    with c_img:
+                        img_val = row.get(image_col, "")
+                        if pd.notna(img_val) and str(img_val).strip() != "":
+                            st.image(str(img_val), width=40)
+                        else:
+                            st.caption("📷")
 
-                        with col_img:
-                            img_val = row.get(image_col, "")
-                            if pd.notna(img_val) and str(img_val).strip() != "":
-                                st.image(str(img_val), width=45)
-                            else:
-                                st.caption("📷")
+                    with c_info:
+                        inline_details = summary_inline_func(row)
+                        st.markdown(
+                            f"**{item_id}** &nbsp;|&nbsp; <span style='color:#888;'>{inline_details}</span>",
+                            unsafe_allow_html=True,
+                        )
 
-                        with st.expander(f"✏️ Edit / Delete '{item_id}'"):
+                    with c_edit:
+                        with st.expander("✏️ Edit"):
                             render_edit_form(
                                 idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab
                             )
+                    st.divider()
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
             """Form renderer for editing row attributes with multi-match selection."""
@@ -733,7 +739,6 @@ if check_password():
                         except Exception as e:
                             st.error(f"Error fetching metadata: {e}")
 
-                # Display match dropdown and preview if matches exist
                 if st.session_state.get(f"edit_matches_{idx}"):
                     matches = st.session_state[f"edit_matches_{idx}"]
                     match_opts = {
@@ -964,7 +969,7 @@ if check_password():
                 "Title",
                 lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')}\n\n"
                 f"**Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
-                lambda r: f"**Type:** {r.get('Type', '')} | **Rating:** {r.get('Rating', '')} | **Year:** {r.get('Year Released', '')} | **Genre:** {r.get('Genre', '')}",
+                lambda r: f"Type: {r.get('Type', '')} | Rating: {r.get('Rating', '')} | Year: {r.get('Year Released', '')} | Genre: {r.get('Genre', '')}",
                 "movies_and_tv_collection.csv",
                 [
                     "Title",
@@ -984,7 +989,7 @@ if check_password():
                 "Title",
                 lambda r: f"**Players:** {r.get('Number of Players', '')}\n\n"
                 f"**Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')}",
-                lambda r: f"**Players:** {r.get('Number of Players', '')} | **Length:** {r.get('Length of Play', '')} | **Age:** {r.get('Age Rating', '')} | **Style:** {r.get('Style of Game', '')}",
+                lambda r: f"Players: {r.get('Number of Players', '')} | Length: {r.get('Length of Play', '')} | Age: {r.get('Age Rating', '')} | Style: {r.get('Style of Game', '')}",
                 "board_and_card_games_collection.csv",
                 [
                     "Title",
@@ -1007,7 +1012,7 @@ if check_password():
                     and str(r.get("Instruction Manual Link")).startswith("http")
                     else ""
                 ),
-                lambda r: f"**Type:** {r.get('Type of Equipment', '')} "
+                lambda r: f"Type: {r.get('Type of Equipment', '')} "
                 + (
                     f"| [📄 Manual Link]({r['Instruction Manual Link']})"
                     if pd.notna(r.get("Instruction Manual Link"))
