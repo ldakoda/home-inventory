@@ -62,19 +62,40 @@ BGG_API_TOKEN = os.getenv("BGG_TOKEN", "")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "")
 
-# Curated Emoji Library Dictionary for Category Creation
-EMOJI_LIBRARY = {
-    "General & Storage": ["📦", "📁", "🗄️", "🏷️", "🔒", "🏠", "📂", "💼", "🧰", "🧺"],
-    "Tech & Media": ["🎬", "📺", "💻", "📱", "🎧", "📷", "🔌", "⌨️", "🖥️", "🎙️", "🔊", "📼"],
-    "Games & Hobbies": ["🎲", "🎮", "🎯", "🧩", "⚽", "🎨", "🎸", "📚", "🏹", "🧸", "🃏", "🏓"],
-    "Kitchen & Home": ["🍳", "☕", "🍽️", "🫖", "🔪", "🧹", "🛋️", "🪴", "🛏️", "🕯️", "🍷", "🍲"],
-    "Tools & Outdoor": ["🛠️", "🔨", "🪛", "🪚", "🧰", "⛺", "🎣", "🚲", "🌱", "🔦", "🪜", "⚡"],
-    "Clothes & Goods": ["👕", "👟", "🕶️", "⌚", "🎒", "💍", "🧢", "🧳", "🧴", "🎨"]
-}
+# Default Fallback Emojis
+DEFAULT_EMOJI_GRID = ["📦", "📁", "🧰", "🎬", "🎲", "🍳", "🛠️", "💻", "🎮", "📚", "👕", "🛋️", "📷", "🔒", "🏠"]
 
 
 # -----------------------------------------------------------------------------
-# 2. GITHUB SYNC HELPER FUNCTION
+# 2. WEB EMOJI SEARCH HELPER (LIVE WEB QUERY)
+# -----------------------------------------------------------------------------
+@st.cache_data(ttl=3600)
+def search_emojis_online(search_query):
+    """Fetches matching unicode emojis via open web API."""
+    if not search_query or not search_query.strip():
+        return DEFAULT_EMOJI_GRID
+
+    try:
+        q = urllib.parse.quote_plus(search_query.strip().lower())
+        url = f"https://emoji-api.com/emojis?search={q}&access_key=77626372b3a0e2a22906b3a0428648e1d2e1320d"
+        res = requests.get(url, timeout=4)
+        if res.status_code == 200:
+            data = res.json()
+            if isinstance(data, list) and len(data) > 0:
+                return [item["character"] for item in data[:30] if "character" in item]
+    except Exception:
+        pass
+
+    # Local fallback search if web query encounters rate limits or offline state
+    fallback_matches = []
+    for em in DEFAULT_EMOJI_GRID:
+        if search_query.lower() in em:
+            fallback_matches.append(em)
+    return fallback_matches or DEFAULT_EMOJI_GRID
+
+
+# -----------------------------------------------------------------------------
+# 3. GITHUB SYNC HELPER FUNCTION
 # -----------------------------------------------------------------------------
 def push_csv_to_github(file_path, commit_message="Update inventory via app"):
     if not GITHUB_TOKEN or not GITHUB_REPO:
@@ -113,7 +134,7 @@ def push_csv_to_github(file_path, commit_message="Update inventory via app"):
 
 
 # -----------------------------------------------------------------------------
-# 3. DATA & SCHEMA HELPERS
+# 4. DATA & SCHEMA HELPERS
 # -----------------------------------------------------------------------------
 CUSTOM_CATEGORIES_FILE = "custom_categories_registry.csv"
 
@@ -341,7 +362,7 @@ def save_edited_row(file_path, original_title_or_name, updated_row_dict, key_col
 
 
 # -----------------------------------------------------------------------------
-# 4. AUTHENTICATION
+# 5. AUTHENTICATION
 # -----------------------------------------------------------------------------
 PIN_CODE = "1234"
 
@@ -367,7 +388,7 @@ if check_password():
     custom_cats = load_custom_categories()
 
     # -----------------------------------------------------------------------------
-    # 5. FINDER TOP TOOLBAR
+    # 6. FINDER TOP TOOLBAR
     # -----------------------------------------------------------------------------
     if "finder_sort_col" not in st.session_state:
         st.session_state["finder_sort_col"] = "Name"
@@ -406,7 +427,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 6. ADD ITEM DRAWER
+    # 7. ADD ITEM DRAWER
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -524,7 +545,7 @@ if check_password():
         st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. LOAD DATABASES & MERGE
+    # 8. LOAD DATABASES & MERGE
     # -----------------------------------------------------------------------------
     df_movies = safe_load_csv("movies_and_tv_collection.csv", ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"])
     df_games = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
@@ -573,7 +594,7 @@ if check_password():
     master_df = pd.concat([m_df, g_df, k_df] + custom_dfs, ignore_index=True)
 
     # -----------------------------------------------------------------------------
-    # 8. GLOBAL FUZZY SEARCH BAR & DYNAMIC FINDER NAVIGATION TABS
+    # 9. GLOBAL FUZZY SEARCH BAR & DYNAMIC FINDER NAVIGATION TABS
     # -----------------------------------------------------------------------------
     finder_search_q = st.text_input("🔍 Search Desktop Files (fuzzy & typo matching)...", key="finder_search_q")
 
@@ -743,7 +764,7 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 9. TAB RENDERING INCLUDING EMOJI PICKER LIBRARY IN BUILDER
+    # 10. TAB RENDERING WITH DYNAMIC ONLINE EMOJI WEB SEARCH
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
@@ -761,38 +782,28 @@ if check_password():
         with tabs[4 + i]:
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
 
-    # "➕ Add Category" Builder Tab with Interactive Emoji Library
+    # "➕ Add Category" Builder Tab with Web-Based Emoji Search
     with tabs[-1]:
         st.subheader("🛠️ Create New Inventory Category")
         st.markdown("Configure a new inventory category schema. The app will automatically create a dedicated CSV file, sync it with GitHub, and generate custom forms for it.")
 
-        st.markdown("##### 1. Select Category Icon")
+        st.markdown("##### 1. Live Web Emoji Search")
         
-        # Interactive Emoji Picker Grid
         selected_emoji = st.session_state.get("selected_category_emoji", "📦")
         
-        emoji_search_q = st.text_input("🔍 Search Emoji Library", placeholder="e.g., tool, game, camera", key="emoji_search_q")
+        emoji_search_q = st.text_input("🌐 Search Web Emoji Database", placeholder="Type keywords like 'pizza', 'camera', 'tool', 'car'...", key="web_emoji_search_q")
         
-        with st.expander(f"🎨 Browse Emoji Library (Current Selected: {selected_emoji})", expanded=True):
-            for group_name, emoji_list in EMOJI_LIBRARY.items():
-                if emoji_search_q:
-                    # Filter matching group or icons
-                    matching_emojis = [e for e in emoji_list if emoji_search_q.lower() in group_name.lower()]
-                    if not matching_emojis and any(q in group_name.lower() for q in emoji_search_q.lower().split()):
-                        matching_emojis = emoji_list
-                    if not matching_emojis:
-                        continue
-                else:
-                    matching_emojis = emoji_list
+        # Query online web API for emojis matching search query
+        web_emojis = search_emojis_online(emoji_search_q)
 
-                st.caption(f"**{group_name}**")
-                grid_cols = st.columns(10)
-                for idx, em in enumerate(matching_emojis):
-                    with grid_cols[idx % 10]:
-                        btn_type = "primary" if em == selected_emoji else "secondary"
-                        if st.button(em, key=f"emoji_btn_{group_name}_{idx}_{em}", type=btn_type):
-                            st.session_state["selected_category_emoji"] = em
-                            st.rerun()
+        with st.expander(f"🎨 Web Search Results ({len(web_emojis)} found | Current Selected: {selected_emoji})", expanded=True):
+            grid_cols = st.columns(10)
+            for idx, em in enumerate(web_emojis):
+                with grid_cols[idx % 10]:
+                    btn_type = "primary" if em == selected_emoji else "secondary"
+                    if st.button(em, key=f"web_em_btn_{idx}_{em}", type=btn_type):
+                        st.session_state["selected_category_emoji"] = em
+                        st.rerun()
 
         st.markdown("---")
         st.markdown("##### 2. Category Details & Fields")
