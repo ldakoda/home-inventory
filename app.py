@@ -95,13 +95,15 @@ def safe_load_csv(file_path, expected_columns):
         return pd.DataFrame(columns=expected_columns)
 
 
-# --- BOARD GAME GEK (BGG) API HELPERS ---
+# --- BOARD GAME GEEK (BGG) API HELPERS (FIXED) ---
 def fetch_bgg_game_matches(game_title):
-    """Queries BoardGameGeek free API for game titles and thumbnails."""
+    """Queries BoardGameGeek free API for game titles with custom User-Agent headers."""
     try:
         encoded_q = urllib.parse.quote_plus(game_title.strip())
         url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
-        res = requests.get(url, timeout=5)
+        headers = {"User-Agent": "HomeInventoryApp/1.0 (Streamlit App)"}
+        
+        res = requests.get(url, headers=headers, timeout=6)
         if res.status_code == 200:
             root = ET.fromstring(res.content)
             items = []
@@ -113,33 +115,43 @@ def fetch_bgg_game_matches(game_title):
                 year = year_elem.attrib.get("value") if year_elem is not None else ""
                 items.append({"id": bgg_id, "name": name, "year": year})
             return items
+        else:
+            st.error(f"BGG Error Code {res.status_code}: Service blocked or throttled.")
     except Exception as e:
-        st.error(f"BGG Fetch Error: {e}")
+        st.error(f"BGG Search Error: {e}")
     return []
 
 
 def fetch_bgg_game_details(bgg_id):
-    """Fetches details (image, player count, playtime, age) for a BGG ID."""
+    """Fetches details (thumbnail, player count, playtime, age) for a BGG ID."""
     try:
         url = f"https://boardgamegeek.com/xmlapi2/thing?id={bgg_id}"
-        res = requests.get(url, timeout=5)
+        headers = {"User-Agent": "HomeInventoryApp/1.0 (Streamlit App)"}
+        res = requests.get(url, headers=headers, timeout=6)
+        
         if res.status_code == 200:
             root = ET.fromstring(res.content)
             item = root.find("item")
             if item is not None:
-                image_elem = item.find("image")
+                # Thumbnail / Image
+                image_elem = item.find("thumbnail")
+                if image_elem is None:
+                    image_elem = item.find("image")
                 image_url = image_elem.text if image_elem is not None else ""
                 
+                # Players
                 min_p = item.find("minplayers").attrib.get("value") if item.find("minplayers") is not None else ""
                 max_p = item.find("maxplayers").attrib.get("value") if item.find("maxplayers") is not None else ""
-                players = f"{min_p}-{max_p} Players" if min_p and max_p else min_p
+                players = f"{min_p}-{max_p} Players" if min_p and max_p and min_p != max_p else f"{min_p} Players"
 
+                # Playtime
                 min_t = item.find("minplaytime").attrib.get("value") if item.find("minplaytime") is not None else ""
                 max_t = item.find("maxplaytime").attrib.get("value") if item.find("maxplaytime") is not None else ""
-                length = f"{min_t}-{max_t} min" if min_t and max_t else f"{min_t} min"
+                length = f"{min_t}-{max_t} min" if min_t and max_t and min_t != max_t else f"{min_t} min"
 
+                # Age
                 age = item.find("minage").attrib.get("value") if item.find("minage") is not None else ""
-                if age:
+                if age and age != "0":
                     age = f"{age}+"
 
                 return {
@@ -153,7 +165,7 @@ def fetch_bgg_game_details(bgg_id):
     return {}
 
 
-# --- OODB & MOVIE HELPERS ---
+# --- OMDB & MOVIE HELPERS ---
 def fetch_collection_movies(collection_title):
     """Detects collection keywords and attempts to fetch individual film entries."""
     if not OMDB_API_KEY:
@@ -583,7 +595,6 @@ if check_password():
         df_games = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
         df_kitchen = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
 
-        # Category Selector for Dynamic Control Options
         active_category = st.radio(
             "Select Inventory Category:",
             ["Movies & TV", "Board & Card Games", "Kitchen Gear"],
@@ -825,7 +836,6 @@ if check_password():
                     st.write("")
                     st.write("")
                     if st.button("Suggest Photo", key=f"btn_edit_kitchen_{file_path}_{idx}"):
-                        # Auto-construct public Wikimedia/Unsplash search fallback
                         encoded_k = urllib.parse.quote_plus(k_query)
                         suggested_img = f"https://source.unsplash.com/400x300/?{encoded_k},kitchen"
                         st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = suggested_img
@@ -846,7 +856,6 @@ if check_password():
             with col_btn1:
                 if st.button("💾 Save Changes", key=f"save_{file_path}_{idx}"):
                     if save_edited_row(file_path, item_id, edit_inputs, title_col):
-                        # Collapse edit drawer and clean up session state
                         st.session_state[f"expand_edit_{file_path}_{idx}"] = False
                         for col_name in editable_cols:
                             st.session_state.pop(f"edit_{file_path}_{idx}_{col_name}", None)
