@@ -1,6 +1,7 @@
 import os
 import urllib.parse
 import xml.etree.ElementTree as ET
+import difflib
 import pandas as pd
 import requests
 import streamlit as st
@@ -461,12 +462,27 @@ if check_password():
     master_df = pd.concat([m_df, g_df, k_df], ignore_index=True)
 
     # -----------------------------------------------------------------------------
-    # 8. GLOBAL SEARCH BAR & FINDER NAVIGATION TABS
+    # 8. GLOBAL FUZZY SEARCH BAR & FINDER NAVIGATION TABS
     # -----------------------------------------------------------------------------
-    finder_search_q = st.text_input("🔍 Search Desktop Files...", key="finder_search_q")
+    finder_search_q = st.text_input("🔍 Search Desktop Files (fuzzy & typo matching)...", key="finder_search_q")
 
     if finder_search_q:
-        master_df = master_df[master_df["Name"].astype(str).str.contains(finder_search_q, case=False)]
+        query = finder_search_q.strip().lower()
+
+        def is_fuzzy_match(name):
+            name_str = str(name).lower()
+            # 1. Direct substring match
+            if query in name_str:
+                return True
+            # 2. Individual word match
+            if any(q_word in name_str for q_word in query.split()):
+                return True
+            # 3. Fuzzy ratio match (catches typos)
+            similarity = difflib.SequenceMatcher(None, query, name_str).ratio()
+            return similarity >= 0.50
+
+        mask = master_df["Name"].apply(is_fuzzy_match)
+        master_df = master_df[mask]
 
     tab_all, tab_movies, tab_games, tab_kitchen = st.tabs([
         "🌐 All Files (Master)",
@@ -497,7 +513,7 @@ if check_password():
 
     def display_finder_view(df_subset, tab_key_prefix):
         if df_subset.empty:
-            st.info("Folder is empty.")
+            st.info("Folder is empty or no files matched your search.")
             return
 
         # Handle Sorting
