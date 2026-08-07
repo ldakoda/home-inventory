@@ -708,39 +708,73 @@ if check_password():
                             )
 
         def render_edit_form(idx, item_id, row, editable_cols, file_path, title_col, is_movie_tab):
-            """Form renderer for editing row attributes with direct metadata search."""
+            """Form renderer for editing row attributes with multi-match selection."""
             if is_movie_tab and OMDB_API_KEY:
-                st.markdown("##### 🔍 Direct Metadata Fetch")
+                st.markdown("##### 🔍 Search Metadata Database")
                 col_m1, col_m2 = st.columns([3, 1])
                 with col_m1:
                     edit_search_q = st.text_input(
-                        "Movie/TV Title to Lookup",
+                        "Search Query",
                         value=item_id,
                         key=f"edit_search_q_{file_path}_{idx}",
                     )
                 with col_m2:
                     st.write("")
                     st.write("")
-                    if st.button("Fetch & Fill", key=f"btn_edit_search_{file_path}_{idx}"):
+                    if st.button("Fetch Matches", key=f"btn_edit_search_{file_path}_{idx}"):
                         try:
-                            # Direct OMDb title lookup (?t=)
-                            url = f"http://www.omdbapi.com/?t={edit_search_q}&apikey={OMDB_API_KEY}"
+                            url = f"http://www.omdbapi.com/?s={edit_search_q}&apikey={OMDB_API_KEY}"
                             res = requests.get(url, timeout=4).json()
                             if res.get("Response") == "True":
-                                st.session_state[f"edit_{file_path}_{idx}_Title"] = res.get("Title", "")
-                                st.session_state[f"edit_{file_path}_{idx}_Rating"] = res.get("Rated", "")
-                                st.session_state[f"edit_{file_path}_{idx}_Year Released"] = res.get("Year", "")
-                                st.session_state[f"edit_{file_path}_{idx}_Length of Movie"] = res.get("Runtime", "")
-                                st.session_state[f"edit_{file_path}_{idx}_Type"] = res.get("Type", "movie").capitalize()
-                                st.session_state[f"edit_{file_path}_{idx}_Genre"] = res.get("Genre", "")
-                                p_url = res.get("Poster", "")
-                                st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = p_url if p_url != "N/A" else ""
-                                st.success("Loaded metadata! Click 'Save Changes' below.")
-                                st.rerun()
+                                st.session_state[f"edit_matches_{idx}"] = res.get("Search", [])
+                                st.success(f"Found {len(res.get('Search', []))} match(es)!")
                             else:
-                                st.error(f"No metadata found for '{edit_search_q}'.")
+                                st.error(f"No results found for '{edit_search_q}'.")
                         except Exception as e:
                             st.error(f"Error fetching metadata: {e}")
+
+                # Display match dropdown and preview if matches exist
+                if st.session_state.get(f"edit_matches_{idx}"):
+                    matches = st.session_state[f"edit_matches_{idx}"]
+                    match_opts = {
+                        f"{m['Title']} ({m.get('Year', 'N/A')}) [{m.get('Type', '').capitalize()}]": m["imdbID"]
+                        for m in matches
+                    }
+                    selected_match_label = st.selectbox(
+                        "Select from found results:",
+                        list(match_opts.keys()),
+                        key=f"select_edit_match_{file_path}_{idx}",
+                    )
+                    selected_imdb_id = match_opts[selected_match_label]
+
+                    if selected_imdb_id:
+                        d_url = f"http://www.omdbapi.com/?i={selected_imdb_id}&apikey={OMDB_API_KEY}"
+                        d_res = requests.get(d_url, timeout=4).json()
+
+                        if d_res.get("Response") == "True":
+                            col_p1, col_p2 = st.columns([1, 3])
+                            with col_p1:
+                                p_poster = d_res.get("Poster", "")
+                                if p_poster and p_poster != "N/A":
+                                    st.image(p_poster, width=70)
+                                else:
+                                    st.caption("No Poster")
+                            with col_p2:
+                                st.caption(
+                                    f"**{d_res.get('Title')}** ({d_res.get('Year')}) | "
+                                    f"Rated: {d_res.get('Rated')} | Genre: {d_res.get('Genre')}"
+                                )
+
+                            if st.button("✅ Apply Changes to Form", key=f"btn_apply_edit_{file_path}_{idx}"):
+                                st.session_state[f"edit_{file_path}_{idx}_Title"] = d_res.get("Title", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Rating"] = d_res.get("Rated", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Year Released"] = d_res.get("Year", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Length of Movie"] = d_res.get("Runtime", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Type"] = d_res.get("Type", "movie").capitalize()
+                                st.session_state[f"edit_{file_path}_{idx}_Genre"] = d_res.get("Genre", "")
+                                st.session_state[f"edit_{file_path}_{idx}_Image_Path"] = p_poster if p_poster != "N/A" else ""
+                                st.success("Loaded selected metadata! Review below and click 'Save Changes'.")
+                                st.rerun()
 
                 st.markdown("---")
 
