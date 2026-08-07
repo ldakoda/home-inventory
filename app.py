@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import requests
 import streamlit as st
+from github import Github
 
 # -----------------------------------------------------------------------------
 # 1. PAGE CONFIG & STYLING
@@ -16,12 +17,53 @@ st.set_page_config(
 IMAGE_DIR = "uploaded_images"
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
-# Fetch OMDb API Key securely from environment / GitHub Secrets
+# Fetch API Keys securely from environment / GitHub Secrets
 OMDB_API_KEY = os.getenv("OMDB_KEY", "")
-
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_REPO = os.getenv("GITHUB_REPO", "")
 
 # -----------------------------------------------------------------------------
-# 2. HELPER FUNCTIONS FOR RESILIENT CSV LOADING & SAVING
+# 2. GITHUB SYNC HELPER FUNCTION
+# -----------------------------------------------------------------------------
+def push_csv_to_github(file_path, commit_message="Update inventory via app"):
+    """Pushes local CSV changes directly back to GitHub repository."""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        st.info("ℹ️ Local file saved. (Configure GITHUB_TOKEN & GITHUB_REPO secrets to auto-sync to GitHub)")
+        return False
+
+    try:
+        g = Github(GITHUB_TOKEN)
+        repo = g.get_repo(GITHUB_REPO)
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        # Check if file already exists in repository to get its SHA hash
+        try:
+            repo_file = repo.get_contents(file_path, ref="main")
+            repo.update_file(
+                path=file_path,
+                message=commit_message,
+                content=content,
+                sha=repo_file.sha,
+                branch="main"
+            )
+        except Exception:
+            repo.create_file(
+                path=file_path,
+                message=commit_message,
+                content=content,
+                branch="main"
+            )
+
+        st.toast(f"✅ Synced `{file_path}` to GitHub repository!", icon="🚀")
+        return True
+    except Exception as e:
+        st.error(f"GitHub Sync Error: {e}")
+        return False
+
+# -----------------------------------------------------------------------------
+# 3. HELPER FUNCTIONS FOR RESILIENT CSV LOADING & SAVING
 # -----------------------------------------------------------------------------
 def safe_load_csv(file_path, expected_columns):
     """Safely loads CSV files without crashing on malformed lines."""
@@ -73,6 +115,7 @@ def update_movie_in_csv(file_path, title, new_data_dict):
             df.at[idx, key] = str(val)
 
     df.to_csv(file_path, index=False)
+    push_csv_to_github(file_path, f"Update metadata for {title}")
     return True
 
 
@@ -117,6 +160,7 @@ def bulk_update_movies_in_csv(file_path, updates_list):
                     df.at[idx, k] = str(v)
 
     df.to_csv(file_path, index=False)
+    push_csv_to_github(file_path, "Bulk audit metadata update")
     return True
 
 
@@ -137,20 +181,22 @@ def save_edited_row(file_path, original_title_or_name, updated_row_dict, key_col
 
     idx = df[mask].index[0]
 
-    # Handle item deletion
     if updated_row_dict.get("_DELETE_"):
         df = df.drop(idx).reset_index(drop=True)
+        msg = f"Delete item '{original_title_or_name}'"
     else:
         for k, v in updated_row_dict.items():
             if k in df.columns:
                 df.at[idx, k] = str(v)
+        msg = f"Edit item '{original_title_or_name}'"
 
     df.to_csv(file_path, index=False)
+    push_csv_to_github(file_path, msg)
     return True
 
 
 # -----------------------------------------------------------------------------
-# 3. AUTHENTICATION
+# 4. AUTHENTICATION
 # -----------------------------------------------------------------------------
 PIN_CODE = "1234"  # Change this to your preferred PIN or invite code
 
@@ -176,19 +222,22 @@ def check_password():
 
 if check_password():
     # -----------------------------------------------------------------------------
-    # 4. NAVIGATION & LOGOUT
+    # 5. NAVIGATION & LOGOUT
     # -----------------------------------------------------------------------------
     st.sidebar.title("Navigation")
     app_mode = st.sidebar.radio(
         "Select Page", ["🔍 Browse Inventory", "➕ Add New Item"]
     )
 
+    if GITHUB_TOKEN and GITHUB_REPO:
+        st.sidebar.caption(f"🟢 Connected to GitHub: `{GITHUB_REPO}`")
+
     if st.sidebar.button("Log Out"):
         st.session_state["authenticated"] = False
         st.rerun()
 
     # -----------------------------------------------------------------------------
-    # 5. PAGE: ADD NEW ITEM
+    # 6. PAGE: ADD NEW ITEM
     # -----------------------------------------------------------------------------
     if app_mode == "➕ Add New Item":
         st.title("➕ Add New Inventory Item")
@@ -207,7 +256,6 @@ if check_password():
                     "⚠️ `OMDB_KEY` environment secret is not set. You can manually enter movie details below."
                 )
 
-            # --- SEARCH & SELECT SECTION ---
             st.markdown("#### 1. Search Movie Database")
             col_search1, col_search2 = st.columns([3, 1])
             with col_search1:
@@ -397,6 +445,7 @@ if check_password():
                             ignore_index=True,
                         )
                         updated_df.to_csv(file_path, index=False)
+                        push_csv_to_github(file_path, f"Add movie '{title}'")
 
                         st.success(
                             f"Added '{title}' to Movies & TV database!"
@@ -466,6 +515,7 @@ if check_password():
                             ignore_index=True,
                         )
                         updated_df.to_csv(file_path, index=False)
+                        push_csv_to_github(file_path, f"Add game '{title}'")
                         st.success(f"Added '{title}' to Games database!")
 
         # --- CATEGORY 3: KITCHEN GEAR ---
@@ -515,12 +565,13 @@ if check_password():
                             ignore_index=True,
                         )
                         updated_df.to_csv(file_path, index=False)
+                        push_csv_to_github(file_path, f"Add kitchen item '{title}'")
                         st.success(
                             f"Added '{title}' to Kitchen Gear database!"
                         )
 
     # -----------------------------------------------------------------------------
-    # 6. PAGE: BROWSE INVENTORY WITH EDIT / DELETE SUPPORT
+    # 7. PAGE: BROWSE INVENTORY WITH EDIT / DELETE SUPPORT
     # -----------------------------------------------------------------------------
     elif app_mode == "🔍 Browse Inventory":
         st.title("🍊 Browse Home Inventory")
@@ -603,7 +654,7 @@ if check_password():
                         st.subheader(item_id)
                         st.write(details_func(row))
 
-                        # --- IN-LINE EDIT / DELETE FORM ---
+                        # In-line Edit / Delete Form
                         with st.expander(f"✏️ Edit / Delete '{item_id}'"):
                             edit_inputs = {}
                             for col_name in editable_cols:
@@ -643,7 +694,7 @@ if check_password():
                                         st.rerun()
 
         with tab_movies:
-            # --- BULK AUDIT TOOL WITH 'ACCEPT ALL' ---
+            # Bulk Audit Tool
             with st.expander("🛠️ Bulk Audit & Auto-Fill Missing Metadata"):
                 if not OMDB_API_KEY:
                     st.error(
@@ -725,7 +776,6 @@ if check_password():
                         if st.session_state.get("bulk_scan_results"):
                             st.markdown("#### Review Found Metadata")
 
-                            # --- ACCEPT ALL BUTTON ---
                             if st.button("⚡ Accept All Changes"):
                                 if bulk_update_movies_in_csv(
                                     "movies_and_tv_collection.csv",
@@ -733,7 +783,7 @@ if check_password():
                                 ):
                                     st.session_state["bulk_scan_results"] = []
                                     st.success(
-                                        "Updated all missing metadata successfully!"
+                                        "Updated and synced all missing metadata to GitHub!"
                                     )
                                     st.rerun()
 
