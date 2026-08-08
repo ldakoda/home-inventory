@@ -130,7 +130,6 @@ def search_multiple_web_images(query_text, num_results=8):
     clean_q = str(query_text).strip()
     results = []
 
-    # Primary broad search
     try:
         with DDGS() as ddgs:
             res = list(ddgs.images(clean_q, max_results=num_results))
@@ -138,7 +137,6 @@ def search_multiple_web_images(query_text, num_results=8):
     except Exception:
         pass
 
-    # Fallback search if few results returned
     if len(results) < 3 and len(clean_q.split()) > 2:
         broader_q = " ".join(clean_q.split()[:2])
         try:
@@ -753,11 +751,12 @@ if check_password():
                             with st.container(border=True):
                                 safe_st_image(img_url, use_container_width=True)
                                 if st.button("✅ Pick This Image", key=f"btn_apply_img_{unique_key_id}_{idx_img}"):
-                                    img_col_name = "Image_Path" if "Image_Path" in editable_cols else title_col
-                                    st.session_state[f"edit_{unique_key_id}_{img_col_name}"] = img_url
-                                    st.session_state.pop(f"edit_search_results_{unique_key_id}", None)
-                                    st.success("Selected photo! Click 'Save Changes' below to finalize.")
-                                    st.rerun()
+                                    edit_inputs["Image_Path"] = img_url
+                                    if save_edited_row(file_path, item_id, edit_inputs, title_col):
+                                        st.session_state[f"expand_edit_{unique_key_id}"] = False
+                                        st.session_state.pop(f"edit_search_results_{unique_key_id}", None)
+                                        st.success(f"Saved image for '{item_id}'!")
+                                        st.rerun()
 
         if category_type == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
             st.markdown("---")
