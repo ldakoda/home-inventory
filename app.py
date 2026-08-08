@@ -6,6 +6,7 @@ import pandas as pd
 import requests
 import streamlit as st
 from github import Github
+from duckduckgo_search import DDGS
 
 # -----------------------------------------------------------------------------
 # 1. PAGE CONFIG & MACOS FINDER STYLING
@@ -71,7 +72,7 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. ACCURATE REAL-WORLD WEB IMAGE SEARCH & SAFE IMAGE DISPLAY HELPERS
+# 2. TARGETED DUCKDUCKGO WEB IMAGE SEARCH & DISPLAY HELPERS
 # -----------------------------------------------------------------------------
 def safe_st_image(img_path, width=None, use_container_width=False, default_emoji="📄"):
     """Safely renders st.image only if the path is a valid URL or an existing local file."""
@@ -122,49 +123,17 @@ def search_emojis_online(search_query):
 
 
 def generate_web_image_url(query_text):
-    """Searches Wikimedia Commons and Wikipedia for authentic photos matching the query."""
+    """Searches DuckDuckGo Images for authentic product photos matching the item query."""
     if not query_text or not str(query_text).strip():
         return ""
 
-    clean_q = str(query_text).strip()
+    clean_q = f"{str(query_text).strip()} product photo"
 
-    # 1. Try Wikimedia Commons search
     try:
-        encoded_q = urllib.parse.quote_plus(clean_q)
-        url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_q}&gsrlimit=1&prop=pageimages&pithumbsize=500&format=json"
-        res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
-        pages = res.get("query", {}).get("pages", {})
-        for _, page_data in pages.items():
-            thumbnail = page_data.get("thumbnail", {}).get("source")
-            if thumbnail:
-                return thumbnail
-    except Exception:
-        pass
-
-    # 2. Try Wikipedia page title search
-    try:
-        encoded_q = urllib.parse.quote_plus(clean_q)
-        url = f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded_q}&prop=pageimages&pithumbsize=500&format=json"
-        res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
-        pages = res.get("query", {}).get("pages", {})
-        for _, page_data in pages.items():
-            thumbnail = page_data.get("thumbnail", {}).get("source")
-            if thumbnail:
-                return thumbnail
-    except Exception:
-        pass
-
-    # 3. Fallback: Query simplified keywords on Wikimedia Commons
-    try:
-        short_q = " ".join(clean_q.split()[:2])
-        encoded_q = urllib.parse.quote_plus(short_q)
-        url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_q}&gsrlimit=1&prop=pageimages&pithumbsize=500&format=json"
-        res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
-        pages = res.get("query", {}).get("pages", {})
-        for _, page_data in pages.items():
-            thumbnail = page_data.get("thumbnail", {}).get("source")
-            if thumbnail:
-                return thumbnail
+        with DDGS() as ddgs:
+            results = list(ddgs.images(clean_q, max_results=3))
+            if results and len(results) > 0:
+                return results[0].get("image", "")
     except Exception:
         pass
 
@@ -507,7 +476,6 @@ def check_password():
 if check_password():
     custom_cats = load_custom_categories()
 
-    # Initialize Session State Keys for Scanned Web Results
     if "bulk_kitchen_scan_results" not in st.session_state:
         st.session_state["bulk_kitchen_scan_results"] = None
     if "bulk_game_scan_results" not in st.session_state:
@@ -883,7 +851,7 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH PERSISTENT REVIEW & ACCEPT GALLERY
+    # 10. TAB RENDERING
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
@@ -978,7 +946,7 @@ if check_password():
     # KITCHEN GEAR TAB
     with tabs[3]:
         with st.expander("🛠️ Bulk Web Image Search & Review (Kitchen & Decor)"):
-            st.write("Search Wikimedia and Wikipedia for authentic product photos across Kitchen and Decor items:")
+            st.write("Search DuckDuckGo Product Images across Kitchen and Decor items:")
             missing_k_mask = (
                 df_kitchen["Image_Path"].isna()
                 | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
@@ -1010,7 +978,7 @@ if check_password():
                     k_results = st.session_state["bulk_kitchen_scan_results"]
 
                     if not k_results:
-                        st.info("No web photos were found for the missing items.")
+                        st.info("No web product photos were found for the missing items.")
                     else:
                         if st.button("⚡ Accept All Found Images", key="btn_accept_all_kitchen"):
                             k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
@@ -1049,7 +1017,7 @@ if check_password():
         with tabs[4 + i]:
             key_cust = f"bulk_cust_scan_results_{i}"
             with st.expander(f"🛠️ Bulk Web Image Search & Review for {custom_cat['Name']}"):
-                st.write(f"Search Wikimedia and Wikipedia in bulk to auto-populate photos in **{custom_cat['Name']}**:")
+                st.write(f"Search DuckDuckGo Product Images in bulk to auto-populate photos in **{custom_cat['Name']}**:")
                 
                 c_df_loaded = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
                 missing_cust_mask = (
@@ -1083,7 +1051,7 @@ if check_password():
                         cust_results = st.session_state[key_cust]
 
                         if not cust_results:
-                            st.info("No web photos were found for the missing items.")
+                            st.info("No web product photos were found for the missing items.")
                         else:
                             if st.button("⚡ Accept All Found Images", key=f"btn_accept_all_cust_{i}"):
                                 c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
