@@ -2,7 +2,6 @@ import os
 import urllib.parse
 import xml.etree.ElementTree as ET
 import difflib
-import base64
 import pandas as pd
 import requests
 import streamlit as st
@@ -129,6 +128,7 @@ def generate_web_image_url(query_text):
 
     clean_q = str(query_text).strip()
 
+    # 1. Try Wikimedia Commons search
     try:
         encoded_q = urllib.parse.quote_plus(clean_q)
         url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_q}&gsrlimit=1&prop=pageimages&pithumbsize=500&format=json"
@@ -141,9 +141,24 @@ def generate_web_image_url(query_text):
     except Exception:
         pass
 
+    # 2. Try Wikipedia page title search
     try:
         encoded_q = urllib.parse.quote_plus(clean_q)
         url = f"https://en.wikipedia.org/w/api.php?action=query&titles={encoded_q}&prop=pageimages&pithumbsize=500&format=json"
+        res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
+        pages = res.get("query", {}).get("pages", {})
+        for _, page_data in pages.items():
+            thumbnail = page_data.get("thumbnail", {}).get("source")
+            if thumbnail:
+                return thumbnail
+    except Exception:
+        pass
+
+    # 3. Fallback: Query simplified keywords on Wikimedia Commons
+    try:
+        short_q = " ".join(clean_q.split()[:2])
+        encoded_q = urllib.parse.quote_plus(short_q)
+        url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_q}&gsrlimit=1&prop=pageimages&pithumbsize=500&format=json"
         res = requests.get(url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
         pages = res.get("query", {}).get("pages", {})
         for _, page_data in pages.items():
@@ -492,6 +507,17 @@ def check_password():
 if check_password():
     custom_cats = load_custom_categories()
 
+    # Initialize Session State Keys for Scanned Web Results
+    if "bulk_kitchen_scan_results" not in st.session_state:
+        st.session_state["bulk_kitchen_scan_results"] = None
+    if "bulk_game_scan_results" not in st.session_state:
+        st.session_state["bulk_game_scan_results"] = None
+
+    for i, c_cat in enumerate(custom_cats):
+        key_name = f"bulk_cust_scan_results_{i}"
+        if key_name not in st.session_state:
+            st.session_state[key_name] = None
+
     # -----------------------------------------------------------------------------
     # 6. FINDER TOP TOOLBAR
     # -----------------------------------------------------------------------------
@@ -530,7 +556,7 @@ if check_password():
     st.markdown("---")
 
     # -----------------------------------------------------------------------------
-    # 7. ADD NEW ITEM DRAWER (REMOTE GITHUB IMAGE UPLOADS)
+    # 7. ADD NEW ITEM DRAWER
     # -----------------------------------------------------------------------------
     if st.session_state.get("show_add_form", False):
         with st.container(border=True):
@@ -857,7 +883,7 @@ if check_password():
                             render_edit_drawer(unique_key_id, item_name, row, editable_cols, file_path, title_col)
 
     # -----------------------------------------------------------------------------
-    # 10. TAB RENDERING WITH REVIEW & ACCEPT GALLERY FOR BULK IMAGES
+    # 10. TAB RENDERING WITH PERSISTENT REVIEW & ACCEPT GALLERY
     # -----------------------------------------------------------------------------
     with tabs[0]:
         display_finder_view(master_df, "master")
@@ -908,39 +934,43 @@ if check_password():
                         progress_bar.progress((i + 1) / len(missing_games_df))
 
                     st.session_state["bulk_game_scan_results"] = game_scan_results
+                    st.rerun()
 
-                if st.session_state.get("bulk_game_scan_results"):
+                if st.session_state.get("bulk_game_scan_results") is not None:
                     st.markdown("#### Review Discovered Web Images")
                     g_results = st.session_state["bulk_game_scan_results"]
 
-                    if st.button("⚡ Accept All BGG Web Box Art", key="btn_accept_bgg_bulk"):
-                        g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
-                        for item in g_results:
-                            mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
-                            if mask_g.any():
-                                g_df_csv.loc[mask_g, "Image_Path"] = item["Found_Image"]
-                        g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
-                        push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
-                        st.session_state.pop("bulk_game_scan_results", None)
-                        st.success("Updated game box art from web!")
-                        st.rerun()
+                    if not g_results:
+                        st.info("No matching game art was found on BGG.")
+                    else:
+                        if st.button("⚡ Accept All BGG Web Box Art", key="btn_accept_bgg_bulk"):
+                            g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+                            for item in g_results:
+                                mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
+                                if mask_g.any():
+                                    g_df_csv.loc[mask_g, "Image_Path"] = item["Found_Image"]
+                            g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
+                            push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
+                            st.session_state["bulk_game_scan_results"] = None
+                            st.success("Updated game box art from web!")
+                            st.rerun()
 
-                    st.markdown("---")
-                    g_cols = st.columns(3)
-                    for idx_g_res, g_item in enumerate(g_results):
-                        with g_cols[idx_g_res % 3]:
-                            with st.container(border=True):
-                                safe_st_image(g_item["Found_Image"], use_container_width=True)
-                                st.markdown(f"**{g_item['Title']}**")
-                                if st.button("✅ Accept Image", key=f"btn_accept_single_g_{idx_g_res}"):
-                                    g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
-                                    mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(g_item["Title"]).lower().strip()
-                                    if mask_g.any():
-                                        g_df_csv.loc[mask_g, "Image_Path"] = g_item["Found_Image"]
-                                        g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
-                                        push_csv_to_github("board_and_card_games_collection.csv", f"Add box art for {g_item['Title']}")
-                                    st.session_state["bulk_game_scan_results"].pop(idx_g_res)
-                                    st.rerun()
+                        st.markdown("---")
+                        g_cols = st.columns(3)
+                        for idx_g_res, g_item in enumerate(g_results):
+                            with g_cols[idx_g_res % 3]:
+                                with st.container(border=True):
+                                    safe_st_image(g_item["Found_Image"], use_container_width=True)
+                                    st.markdown(f"**{g_item['Title']}**")
+                                    if st.button("✅ Accept Image", key=f"btn_accept_single_g_{idx_g_res}"):
+                                        g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
+                                        mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(g_item["Title"]).lower().strip()
+                                        if mask_g.any():
+                                            g_df_csv.loc[mask_g, "Image_Path"] = g_item["Found_Image"]
+                                            g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
+                                            push_csv_to_github("board_and_card_games_collection.csv", f"Add box art for {g_item['Title']}")
+                                        st.session_state["bulk_game_scan_results"].pop(idx_g_res)
+                                        st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Board & Card Games"], "games")
@@ -973,8 +1003,9 @@ if check_password():
                         progress_bar.progress((idx_k + 1) / len(missing_k_df))
 
                     st.session_state["bulk_kitchen_scan_results"] = kitchen_scan_results
+                    st.rerun()
 
-                if st.session_state.get("bulk_kitchen_scan_results"):
+                if st.session_state.get("bulk_kitchen_scan_results") is not None:
                     st.markdown("#### Review Discovered Web Images")
                     k_results = st.session_state["bulk_kitchen_scan_results"]
 
@@ -989,7 +1020,7 @@ if check_password():
                                     k_df_csv.loc[mask_k, "Image_Path"] = str(item["Found_Image"])
                             k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
                             push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk web kitchen photo update")
-                            st.session_state.pop("bulk_kitchen_scan_results", None)
+                            st.session_state["bulk_kitchen_scan_results"] = None
                             st.success("Applied all discovered web photos!")
                             st.rerun()
 
@@ -1016,6 +1047,7 @@ if check_password():
     # DYNAMIC CUSTOM CATEGORIES TABS
     for i, custom_cat in enumerate(custom_cats):
         with tabs[4 + i]:
+            key_cust = f"bulk_cust_scan_results_{i}"
             with st.expander(f"🛠️ Bulk Web Image Search & Review for {custom_cat['Name']}"):
                 st.write(f"Search Wikimedia and Wikipedia in bulk to auto-populate photos in **{custom_cat['Name']}**:")
                 
@@ -1043,11 +1075,12 @@ if check_password():
                                 })
                             progress_bar.progress((idx_c + 1) / len(missing_cust_df))
 
-                        st.session_state[f"bulk_cust_scan_results_{i}"] = cust_scan_results
+                        st.session_state[key_cust] = cust_scan_results
+                        st.rerun()
 
-                    if st.session_state.get(f"bulk_cust_scan_results_{i}"):
+                    if st.session_state.get(key_cust) is not None:
                         st.markdown("#### Review Discovered Web Images")
-                        cust_results = st.session_state[f"bulk_cust_scan_results_{i}"]
+                        cust_results = st.session_state[key_cust]
 
                         if not cust_results:
                             st.info("No web photos were found for the missing items.")
@@ -1060,7 +1093,7 @@ if check_password():
                                         c_df_csv.loc[mask_c, "Image_Path"] = str(item["Found_Image"])
                                 c_df_csv.to_csv(custom_cat["File"], index=False)
                                 push_csv_to_github(custom_cat["File"], f"Bulk web image fill for {custom_cat['Name']}")
-                                st.session_state.pop(f"bulk_cust_scan_results_{i}", None)
+                                st.session_state[key_cust] = None
                                 st.success("Applied all discovered web photos!")
                                 st.rerun()
 
@@ -1078,7 +1111,7 @@ if check_password():
                                                 c_df_csv.loc[mask_c, "Image_Path"] = str(c_item["Found_Image"])
                                                 c_df_csv.to_csv(custom_cat["File"], index=False)
                                                 push_csv_to_github(custom_cat["File"], f"Add image for {c_item['Item_Name']}")
-                                            st.session_state[f"bulk_cust_scan_results_{i}"].pop(idx_c_res)
+                                            st.session_state[key_cust].pop(idx_c_res)
                                             st.rerun()
 
             st.markdown("---")
