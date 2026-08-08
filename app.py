@@ -1,15 +1,17 @@
 import os
+import time
 import urllib.parse
 import xml.etree.ElementTree as ET
 import difflib
 import pandas as pd
 import requests
 import streamlit as st
+import extra_streamlit_components as stx
 from github import Github
 from duckduckgo_search import DDGS
 
 # -----------------------------------------------------------------------------
-# 1. PAGE CONFIG & MACOS FINDER STYLING
+# 1. PAGE CONFIG & MOBILE-RESPONSIVE FINDER STYLING
 # -----------------------------------------------------------------------------
 st.set_page_config(
     page_title="Home Inventory System",
@@ -24,6 +26,16 @@ st.markdown(
         gap: 0.3rem !important;
     }
     [data-testid="stSidebarNav"] {display: none;}
+
+    /* Mobile adjustments */
+    @media (max-width: 768px) {
+        .stColumns {
+            flex-direction: column !important;
+        }
+        .finder-row {
+            font-size: 0.85rem !important;
+        }
+    }
 
     .finder-header-btn button {
         background-color: transparent !important;
@@ -123,7 +135,7 @@ def search_emojis_online(search_query):
 
 
 def search_multiple_web_images(query_text, num_results=8):
-    """Searches DuckDuckGo Images with broader keywords and returns multiple candidate URLs."""
+    """Searches DuckDuckGo Images with broader keywords and returns candidate image URLs."""
     if not query_text or not str(query_text).strip():
         return []
 
@@ -469,26 +481,53 @@ def save_edited_row(file_path, original_title_or_name, updated_row_dict, key_col
 
 
 # -----------------------------------------------------------------------------
-# 5. AUTHENTICATION
+# 5. AUTHENTICATION & 30-DAY PERSISTENT COOKIE
 # -----------------------------------------------------------------------------
 PIN_CODE = "1234"
 
+def get_cookie_manager():
+    if "cookie_manager" not in st.session_state:
+        st.session_state["cookie_manager"] = stx.CookieManager()
+    return st.session_state["cookie_manager"]
+
 
 def check_password():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
+    cookie_manager = get_cookie_manager()
 
-    if not st.session_state["authenticated"]:
+    auth_cookie = cookie_manager.get("home_inventory_auth_token")
+
+    if auth_cookie == "logged_in_30_days_valid":
+        st.session_state["authenticated"] = True
+        return True
+
+    if not st.session_state.get("authenticated", False):
         st.title("🏠 Home Inventory Access")
         input_pin = st.text_input("Enter Invite Code / PIN:", type="password", key="pin_input")
+
         if st.button("Login"):
             if input_pin == PIN_CODE:
                 st.session_state["authenticated"] = True
+                cookie_manager.set(
+                    "home_inventory_auth_token",
+                    "logged_in_30_days_valid",
+                    key="set_auth_cookie",
+                    max_age=30 * 86400  # 30 Days in seconds
+                )
+                time.sleep(0.2)
                 st.rerun()
             else:
                 st.error("Invalid invite code.")
         return False
+
     return True
+
+
+def logout_user():
+    cookie_manager = get_cookie_manager()
+    cookie_manager.delete("home_inventory_auth_token", key="delete_auth_cookie")
+    st.session_state["authenticated"] = False
+    time.sleep(0.2)
+    st.rerun()
 
 
 if check_password():
@@ -536,8 +575,7 @@ if check_password():
 
     with toolbar_col3:
         if st.button("🚪 Log Out", use_container_width=True):
-            st.session_state["authenticated"] = False
-            st.rerun()
+            logout_user()
 
     st.markdown("---")
 
