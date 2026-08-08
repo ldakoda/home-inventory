@@ -140,6 +140,22 @@ def generate_web_image_url(query_text):
     return ""
 
 
+def search_multiple_web_images(query_text, num_results=6):
+    """Searches DuckDuckGo Images and returns a list of candidate image URLs for editing selection."""
+    if not query_text or not str(query_text).strip():
+        return []
+
+    clean_q = f"{str(query_text).strip()} product photo"
+    try:
+        with DDGS() as ddgs:
+            results = list(ddgs.images(clean_q, max_results=num_results))
+            return [r.get("image", "") for r in results if r.get("image")]
+    except Exception:
+        pass
+
+    return []
+
+
 # -----------------------------------------------------------------------------
 # 3. GITHUB SYNC & REMOTE IMAGE UPLOAD HELPERS
 # -----------------------------------------------------------------------------
@@ -709,7 +725,38 @@ if check_password():
 
         uploaded_img_file = st.file_uploader(f"Upload Image File for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
 
-        if row.get("Category") == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
+        # INLINE WEB IMAGE SEARCH FOR KITCHEN GEAR AND CUSTOM CATEGORIES
+        category_type = str(row.get("Category", ""))
+        is_kitchen_or_custom = category_type == "Kitchen Gear" or any(c["Name"] == category_type for c in custom_cats)
+
+        if is_kitchen_or_custom:
+            st.markdown("---")
+            st.caption("🌐 Search Web Product Images for this Item:")
+            search_query_input = st.text_input("Web Search Terms", value=item_id, key=f"web_q_{unique_key_id}")
+            
+            if st.button("🔍 Search Web Photos", key=f"btn_search_web_{unique_key_id}"):
+                found_imgs = search_multiple_web_images(search_query_input, num_results=6)
+                st.session_state[f"edit_search_results_{unique_key_id}"] = found_imgs
+
+            if st.session_state.get(f"edit_search_results_{unique_key_id}"):
+                c_results = st.session_state[f"edit_search_results_{unique_key_id}"]
+                if not c_results:
+                    st.info("No web photos found for this query.")
+                else:
+                    st.markdown("##### Select an Image:")
+                    grid_cols = st.columns(3)
+                    for idx_img, img_url in enumerate(c_results):
+                        with grid_cols[idx_img % 3]:
+                            with st.container(border=True):
+                                safe_st_image(img_url, use_container_width=True)
+                                if st.button("✅ Apply Image", key=f"btn_apply_img_{unique_key_id}_{idx_img}"):
+                                    img_col_name = "Image_Path" if "Image_Path" in editable_cols else title_col
+                                    st.session_state[f"edit_{unique_key_id}_{img_col_name}"] = img_url
+                                    st.session_state.pop(f"edit_search_results_{unique_key_id}", None)
+                                    st.success("Selected web photo! Click 'Save Changes' below to finalize.")
+                                    st.rerun()
+
+        if category_type == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
             st.markdown("---")
             st.subheader(f"🎬 Collection Pack Breakdown for '{item_id}'")
             st.caption("Expand or auto-unpack child movies contained inside this collection pack:")
@@ -721,6 +768,7 @@ if check_password():
                     st.success(f"Unpacked and added {len(unpacked_childs)} child films to inventory!")
                     st.rerun()
 
+        st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
             if st.button("💾 Save Changes", key=f"save_{unique_key_id}"):
