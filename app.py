@@ -72,7 +72,7 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. TARGETED DUCKDUCKGO WEB IMAGE SEARCH & DISPLAY HELPERS
+# 2. FLEXIBLE DUCKDUCKGO WEB IMAGE SEARCH & DISPLAY HELPERS
 # -----------------------------------------------------------------------------
 def safe_st_image(img_path, width=None, use_container_width=False, default_emoji="📄"):
     """Safely renders st.image only if the path is a valid URL or an existing local file."""
@@ -122,38 +122,42 @@ def search_emojis_online(search_query):
     return DEFAULT_EMOJI_GRID
 
 
-def generate_web_image_url(query_text):
-    """Searches DuckDuckGo Images for authentic product photos matching the item query."""
-    if not query_text or not str(query_text).strip():
-        return ""
-
-    clean_q = f"{str(query_text).strip()} product photo"
-
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.images(clean_q, max_results=3))
-            if results and len(results) > 0:
-                return results[0].get("image", "")
-    except Exception:
-        pass
-
-    return ""
-
-
-def search_multiple_web_images(query_text, num_results=6):
-    """Searches DuckDuckGo Images and returns a list of candidate image URLs for editing selection."""
+def search_multiple_web_images(query_text, num_results=8):
+    """Searches DuckDuckGo Images with broader keywords and returns multiple candidate URLs."""
     if not query_text or not str(query_text).strip():
         return []
 
-    clean_q = f"{str(query_text).strip()} product photo"
+    clean_q = str(query_text).strip()
+    results = []
+
+    # Primary broad search
     try:
         with DDGS() as ddgs:
-            results = list(ddgs.images(clean_q, max_results=num_results))
-            return [r.get("image", "") for r in results if r.get("image")]
+            res = list(ddgs.images(clean_q, max_results=num_results))
+            results.extend([r.get("image", "") for r in res if r.get("image")])
     except Exception:
         pass
 
-    return []
+    # Fallback search if few results returned
+    if len(results) < 3 and len(clean_q.split()) > 2:
+        broader_q = " ".join(clean_q.split()[:2])
+        try:
+            with DDGS() as ddgs:
+                res = list(ddgs.images(broader_q, max_results=num_results))
+                for r in res:
+                    img_url = r.get("image", "")
+                    if img_url and img_url not in results:
+                        results.append(img_url)
+        except Exception:
+            pass
+
+    return results[:num_results]
+
+
+def generate_web_image_url(query_text):
+    """Returns top candidate image for broad matching."""
+    candidates = search_multiple_web_images(query_text, num_results=3)
+    return candidates[0] if candidates else ""
 
 
 # -----------------------------------------------------------------------------
@@ -725,35 +729,34 @@ if check_password():
 
         uploaded_img_file = st.file_uploader(f"Upload Image File for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
 
-        # INLINE WEB IMAGE SEARCH FOR KITCHEN GEAR AND CUSTOM CATEGORIES
         category_type = str(row.get("Category", ""))
         is_kitchen_or_custom = category_type == "Kitchen Gear" or any(c["Name"] == category_type for c in custom_cats)
 
         if is_kitchen_or_custom:
             st.markdown("---")
-            st.caption("🌐 Search Web Product Images for this Item:")
+            st.caption("🌐 Search Web Product Images (Returns Close Matches):")
             search_query_input = st.text_input("Web Search Terms", value=item_id, key=f"web_q_{unique_key_id}")
             
             if st.button("🔍 Search Web Photos", key=f"btn_search_web_{unique_key_id}"):
-                found_imgs = search_multiple_web_images(search_query_input, num_results=6)
+                found_imgs = search_multiple_web_images(search_query_input, num_results=8)
                 st.session_state[f"edit_search_results_{unique_key_id}"] = found_imgs
 
             if st.session_state.get(f"edit_search_results_{unique_key_id}"):
                 c_results = st.session_state[f"edit_search_results_{unique_key_id}"]
                 if not c_results:
-                    st.info("No web photos found for this query.")
+                    st.info("No close web photos found for this query.")
                 else:
-                    st.markdown("##### Select an Image:")
-                    grid_cols = st.columns(3)
+                    st.markdown("##### Select a Matching Image Option:")
+                    grid_cols = st.columns(4)
                     for idx_img, img_url in enumerate(c_results):
-                        with grid_cols[idx_img % 3]:
+                        with grid_cols[idx_img % 4]:
                             with st.container(border=True):
                                 safe_st_image(img_url, use_container_width=True)
-                                if st.button("✅ Apply Image", key=f"btn_apply_img_{unique_key_id}_{idx_img}"):
+                                if st.button("✅ Pick This Image", key=f"btn_apply_img_{unique_key_id}_{idx_img}"):
                                     img_col_name = "Image_Path" if "Image_Path" in editable_cols else title_col
                                     st.session_state[f"edit_{unique_key_id}_{img_col_name}"] = img_url
                                     st.session_state.pop(f"edit_search_results_{unique_key_id}", None)
-                                    st.success("Selected web photo! Click 'Save Changes' below to finalize.")
+                                    st.success("Selected photo! Click 'Save Changes' below to finalize.")
                                     st.rerun()
 
         if category_type == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
@@ -994,7 +997,7 @@ if check_password():
     # KITCHEN GEAR TAB
     with tabs[3]:
         with st.expander("🛠️ Bulk Web Image Search & Review (Kitchen & Decor)"):
-            st.write("Search DuckDuckGo Product Images across Kitchen and Decor items:")
+            st.write("Search close web product images across Kitchen and Decor items:")
             missing_k_mask = (
                 df_kitchen["Image_Path"].isna()
                 | (df_kitchen["Image_Path"].astype(str).str.strip() == "")
@@ -1010,11 +1013,11 @@ if check_password():
                     progress_bar = st.progress(0)
                     for idx_k, (_, k_row) in enumerate(missing_k_df.iterrows()):
                         k_name = k_row["Name of Item"]
-                        found_url = generate_web_image_url(k_name)
-                        if found_url:
+                        found_urls = search_multiple_web_images(k_name, num_results=3)
+                        if found_urls:
                             kitchen_scan_results.append({
                                 "Name of Item": k_name,
-                                "Found_Image": found_url
+                                "Candidate_Images": found_urls
                             })
                         progress_bar.progress((idx_k + 1) / len(missing_k_df))
 
@@ -1028,34 +1031,23 @@ if check_password():
                     if not k_results:
                         st.info("No web product photos were found for the missing items.")
                     else:
-                        if st.button("⚡ Accept All Found Images", key="btn_accept_all_kitchen"):
-                            k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
-                            for item in k_results:
-                                mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(item["Name of Item"]).lower().strip()
-                                if mask_k.any():
-                                    k_df_csv.loc[mask_k, "Image_Path"] = str(item["Found_Image"])
-                            k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
-                            push_csv_to_github("kitchen_gear_inventory_v2.csv", "Bulk web kitchen photo update")
-                            st.session_state["bulk_kitchen_scan_results"] = None
-                            st.success("Applied all discovered web photos!")
-                            st.rerun()
-
                         st.markdown("---")
-                        rev_cols = st.columns(3)
                         for idx_res, res_item in enumerate(k_results):
-                            with rev_cols[idx_res % 3]:
-                                with st.container(border=True):
-                                    safe_st_image(res_item["Found_Image"], use_container_width=True)
-                                    st.markdown(f"**{res_item['Name of Item']}**")
-                                    if st.button("✅ Accept Image", key=f"btn_accept_single_k_{idx_res}"):
-                                        k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
-                                        mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(res_item["Name of Item"]).lower().strip()
-                                        if mask_k.any():
-                                            k_df_csv.loc[mask_k, "Image_Path"] = str(res_item["Found_Image"])
-                                            k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
-                                            push_csv_to_github("kitchen_gear_inventory_v2.csv", f"Add image for {res_item['Name of Item']}")
-                                        st.session_state["bulk_kitchen_scan_results"].pop(idx_res)
-                                        st.rerun()
+                            st.markdown(f"**Item:** {res_item['Name of Item']}")
+                            cand_cols = st.columns(3)
+                            for cand_idx, img_url in enumerate(res_item["Candidate_Images"]):
+                                with cand_cols[cand_idx % 3]:
+                                    with st.container(border=True):
+                                        safe_st_image(img_url, use_container_width=True)
+                                        if st.button("✅ Accept Image", key=f"btn_accept_k_{idx_res}_{cand_idx}"):
+                                            k_df_csv = safe_load_csv("kitchen_gear_inventory_v2.csv", ["Name of Item", "Type of Equipment", "Instruction Manual Link", "Image_Path"])
+                                            mask_k = k_df_csv["Name of Item"].astype(str).str.lower().str.strip() == str(res_item["Name of Item"]).lower().strip()
+                                            if mask_k.any():
+                                                k_df_csv.loc[mask_k, "Image_Path"] = str(img_url)
+                                                k_df_csv.to_csv("kitchen_gear_inventory_v2.csv", index=False)
+                                                push_csv_to_github("kitchen_gear_inventory_v2.csv", f"Add image for {res_item['Name of Item']}")
+                                            st.session_state["bulk_kitchen_scan_results"].pop(idx_res)
+                                            st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Kitchen Gear"], "kitchen")
@@ -1065,7 +1057,7 @@ if check_password():
         with tabs[4 + i]:
             key_cust = f"bulk_cust_scan_results_{i}"
             with st.expander(f"🛠️ Bulk Web Image Search & Review for {custom_cat['Name']}"):
-                st.write(f"Search DuckDuckGo Product Images in bulk to auto-populate photos in **{custom_cat['Name']}**:")
+                st.write(f"Search close web product images in bulk to auto-populate photos in **{custom_cat['Name']}**:")
                 
                 c_df_loaded = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
                 missing_cust_mask = (
@@ -1083,11 +1075,11 @@ if check_password():
                         progress_bar = st.progress(0)
                         for idx_c, (_, c_row) in enumerate(missing_cust_df.iterrows()):
                             item_name_val = c_row[custom_cat["Primary_Col"]]
-                            found_url = generate_web_image_url(item_name_val)
-                            if found_url:
+                            found_urls = search_multiple_web_images(item_name_val, num_results=3)
+                            if found_urls:
                                 cust_scan_results.append({
                                     "Item_Name": item_name_val,
-                                    "Found_Image": found_url
+                                    "Candidate_Images": found_urls
                                 })
                             progress_bar.progress((idx_c + 1) / len(missing_cust_df))
 
@@ -1101,34 +1093,23 @@ if check_password():
                         if not cust_results:
                             st.info("No web product photos were found for the missing items.")
                         else:
-                            if st.button("⚡ Accept All Found Images", key=f"btn_accept_all_cust_{i}"):
-                                c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
-                                for item in cust_results:
-                                    mask_c = c_df_csv[custom_cat["Primary_Col"]].astype(str).str.lower().str.strip() == str(item["Item_Name"]).lower().strip()
-                                    if mask_c.any():
-                                        c_df_csv.loc[mask_c, "Image_Path"] = str(item["Found_Image"])
-                                c_df_csv.to_csv(custom_cat["File"], index=False)
-                                push_csv_to_github(custom_cat["File"], f"Bulk web image fill for {custom_cat['Name']}")
-                                st.session_state[key_cust] = None
-                                st.success("Applied all discovered web photos!")
-                                st.rerun()
-
                             st.markdown("---")
-                            c_rev_cols = st.columns(3)
                             for idx_c_res, c_item in enumerate(cust_results):
-                                with c_rev_cols[idx_c_res % 3]:
-                                    with st.container(border=True):
-                                        safe_st_image(c_item["Found_Image"], use_container_width=True)
-                                        st.markdown(f"**{c_item['Item_Name']}**")
-                                        if st.button("✅ Accept Image", key=f"btn_accept_single_c_{i}_{idx_c_res}"):
-                                            c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
-                                            mask_c = c_df_csv[custom_cat["Primary_Col"]].astype(str).str.lower().str.strip() == str(c_item["Item_Name"]).lower().strip()
-                                            if mask_c.any():
-                                                c_df_csv.loc[mask_c, "Image_Path"] = str(c_item["Found_Image"])
-                                                c_df_csv.to_csv(custom_cat["File"], index=False)
-                                                push_csv_to_github(custom_cat["File"], f"Add image for {c_item['Item_Name']}")
-                                            st.session_state[key_cust].pop(idx_c_res)
-                                            st.rerun()
+                                st.markdown(f"**Item:** {c_item['Item_Name']}")
+                                c_cand_cols = st.columns(3)
+                                for c_cand_idx, img_url in enumerate(c_item["Candidate_Images"]):
+                                    with c_cand_cols[c_cand_idx % 3]:
+                                        with st.container(border=True):
+                                            safe_st_image(img_url, use_container_width=True)
+                                            if st.button("✅ Accept Image", key=f"btn_accept_c_{i}_{idx_c_res}_{c_cand_idx}"):
+                                                c_df_csv = safe_load_csv(custom_cat["File"], custom_cat["Fields"])
+                                                mask_c = c_df_csv[custom_cat["Primary_Col"]].astype(str).str.lower().str.strip() == str(c_item["Item_Name"]).lower().strip()
+                                                if mask_c.any():
+                                                    c_df_csv.loc[mask_c, "Image_Path"] = str(img_url)
+                                                    c_df_csv.to_csv(custom_cat["File"], index=False)
+                                                    push_csv_to_github(custom_cat["File"], f"Add image for {c_item['Item_Name']}")
+                                                st.session_state[key_cust].pop(idx_c_res)
+                                                st.rerun()
 
             st.markdown("---")
             display_finder_view(master_df[master_df["Category"] == custom_cat["Name"]], f"custom_{i}")
