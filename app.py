@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -84,7 +85,7 @@ DEFAULT_EMOJI_GRID = [
 
 
 # -----------------------------------------------------------------------------
-# 2. FLEXIBLE DUCKDUCKGO WEB IMAGE SEARCH & DISPLAY HELPERS
+# 2. MULTI-TIER WEB IMAGE SEARCH & DISPLAY HELPERS
 # -----------------------------------------------------------------------------
 def safe_st_image(img_path, width=None, use_container_width=False, default_emoji="📄"):
     """Safely renders st.image only if the path is a valid URL or an existing local file."""
@@ -135,31 +136,55 @@ def search_emojis_online(search_query):
 
 
 def search_multiple_web_images(query_text, num_results=8):
-    """Searches DuckDuckGo Images with broader keywords and returns candidate image URLs."""
+    """Searches web image sources using multi-tier fallback (DDG -> Simplified DDG -> Wikimedia) to prevent zero-result hits."""
     if not query_text or not str(query_text).strip():
         return []
 
-    clean_q = str(query_text).strip()
+    raw_query = str(query_text).strip()
+    clean_q = re.sub(r"[^\w\s]", "", raw_query)
     results = []
 
+    # TIER 1: DuckDuckGo Search (Cleaned Query)
     try:
         with DDGS() as ddgs:
             res = list(ddgs.images(clean_q, max_results=num_results))
-            results.extend([r.get("image", "") for r in res if r.get("image")])
+            for r in res:
+                img_url = r.get("image") or r.get("thumbnail")
+                if img_url and img_url not in results:
+                    results.append(img_url)
     except Exception:
         pass
 
+    # TIER 2: DuckDuckGo Search (Simplified First 2 Words)
     if len(results) < 3 and len(clean_q.split()) > 2:
-        broader_q = " ".join(clean_q.split()[:2])
+        short_q = " ".join(clean_q.split()[:2])
         try:
             with DDGS() as ddgs:
-                res = list(ddgs.images(broader_q, max_results=num_results))
+                res = list(ddgs.images(short_q, max_results=num_results))
                 for r in res:
-                    img_url = r.get("image", "")
+                    img_url = r.get("image") or r.get("thumbnail")
                     if img_url and img_url not in results:
                         results.append(img_url)
         except Exception:
             pass
+
+    # TIER 3: Wikimedia Commons API Fallback
+    if len(results) < 3:
+        for search_term in [clean_q, " ".join(clean_q.split()[:2])]:
+            try:
+                encoded_q = urllib.parse.quote_plus(search_term)
+                wiki_url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={encoded_q}&gsrlimit=10&prop=pageimages&pithumbsize=500&format=json"
+                res = requests.get(wiki_url, headers={"User-Agent": "HomeInventoryApp/1.0"}, timeout=5).json()
+                pages = res.get("query", {}).get("pages", {})
+                for _, page_data in pages.items():
+                    thumb = page_data.get("thumbnail", {}).get("source")
+                    if thumb and thumb not in results:
+                        results.append(thumb)
+            except Exception:
+                pass
+
+            if len(results) >= num_results:
+                break
 
     return results[:num_results]
 
