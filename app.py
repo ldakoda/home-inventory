@@ -865,15 +865,7 @@ if check_password():
 
             if st.button("🔍 Search BGG", key=f"btn_search_bgg_{unique_key_id}"):
                 bgg_matches = fetch_bgg_game_matches(bgg_q_input)
-                detailed_bgg = []
-                for match in bgg_matches:
-                    details = fetch_bgg_game_details(match["id"])
-                    detailed_bgg.append({
-                        "Title": match["name"],
-                        "Year": match["year"],
-                        **details
-                    })
-                st.session_state[f"edit_bgg_results_{unique_key_id}"] = detailed_bgg
+                st.session_state[f"edit_bgg_results_{unique_key_id}"] = bgg_matches
 
             if st.session_state.get(f"edit_bgg_results_{unique_key_id}"):
                 bgg_results = st.session_state[f"edit_bgg_results_{unique_key_id}"]
@@ -882,29 +874,30 @@ if check_password():
                 else:
                     st.markdown("##### Select a Matching Game:")
                     grid_cols = st.columns(min(len(bgg_results), 4))
-                    for idx_g, g_item in enumerate(bgg_results):
+                    for idx_g, g_match in enumerate(bgg_results):
                         with grid_cols[idx_g % 4]:
                             with st.container(border=True):
-                                safe_st_image(g_item.get("Image_Path", ""), use_container_width=True)
-                                st.markdown(f"**{g_item['Title']}** ({g_item.get('Year', '')})")
-                                st.caption(f"{g_item.get('Number of Players', '')} | {g_item.get('Length of Play', '')}")
-                                if st.button("✅ Accept & Apply BGG Details", key=f"btn_apply_bgg_{unique_key_id}_{idx_g}"):
-                                    if "Title" in edit_inputs:
-                                        edit_inputs["Title"] = g_item["Title"]
-                                    if "Number of Players" in edit_inputs and g_item.get("Number of Players"):
-                                        edit_inputs["Number of Players"] = g_item["Number of Players"]
-                                    if "Length of Play" in edit_inputs and g_item.get("Length of Play"):
-                                        edit_inputs["Length of Play"] = g_item["Length of Play"]
-                                    if "Age Rating" in edit_inputs and g_item.get("Age Rating"):
-                                        edit_inputs["Age Rating"] = g_item["Age Rating"]
-                                    if "Image_Path" in edit_inputs and g_item.get("Image_Path"):
-                                        edit_inputs["Image_Path"] = g_item["Image_Path"]
+                                st.markdown(f"**{g_match['name']}**")
+                                if g_match.get("year"):
+                                    st.caption(f"Released: {g_match['year']}")
+                                if st.button("✅ Fetch & Apply Details", key=f"btn_apply_bgg_{unique_key_id}_{idx_g}"):
+                                    with st.spinner("Fetching full game details from BGG..."):
+                                        details = fetch_bgg_game_details(g_match["id"])
+                                        edit_inputs["Title"] = g_match["name"]
+                                        if details.get("Number of Players"):
+                                            edit_inputs["Number of Players"] = details["Number of Players"]
+                                        if details.get("Length of Play"):
+                                            edit_inputs["Length of Play"] = details["Length of Play"]
+                                        if details.get("Age Rating"):
+                                            edit_inputs["Age Rating"] = details["Age Rating"]
+                                        if details.get("Image_Path"):
+                                            edit_inputs["Image_Path"] = details["Image_Path"]
 
-                                    if save_edited_row(file_path, item_id, edit_inputs, title_col):
-                                        st.session_state[f"expand_edit_{unique_key_id}"] = False
-                                        st.session_state.pop(f"edit_bgg_results_{unique_key_id}", None)
-                                        st.success(f"Updated details for '{item_id}'!")
-                                        st.rerun()
+                                        if save_edited_row(file_path, item_id, edit_inputs, title_col):
+                                            st.session_state[f"expand_edit_{unique_key_id}"] = False
+                                            st.session_state.pop(f"edit_bgg_results_{unique_key_id}", None)
+                                            st.success(f"Updated details for '{item_id}'!")
+                                            st.rerun()
 
         else:
             # General Web Image Search Fallback for Kitchen Gear and Custom Categories
