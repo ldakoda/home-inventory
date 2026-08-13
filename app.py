@@ -189,12 +189,6 @@ def search_multiple_web_images(query_text, num_results=8):
     return results[:num_results]
 
 
-def generate_web_image_url(query_text):
-    """Returns top candidate image for broad matching."""
-    candidates = search_multiple_web_images(query_text, num_results=3)
-    return candidates[0] if candidates else ""
-
-
 # -----------------------------------------------------------------------------
 # 3. GITHUB SYNC & REMOTE IMAGE UPLOAD HELPERS
 # -----------------------------------------------------------------------------
@@ -278,7 +272,7 @@ def push_image_to_github(uploaded_file):
 
 
 # -----------------------------------------------------------------------------
-# 4. DATA, API & SCHEMA HELPERS
+# 4. DATA & API HELPERS (OMDb & BGG INTEGRATION)
 # -----------------------------------------------------------------------------
 CUSTOM_CATEGORIES_FILE = "custom_categories_registry.csv"
 
@@ -343,6 +337,7 @@ def save_custom_category(cat_name, icon, primary_col, fields_list):
     push_csv_to_github(CUSTOM_CATEGORIES_FILE, f"Register category '{cat_name}'")
 
 
+# OMDB Helper Functions
 def fetch_omdb_movie_matches(movie_title):
     if not OMDB_API_KEY or not movie_title or not str(movie_title).strip():
         return []
@@ -374,6 +369,11 @@ def fetch_omdb_movie_matches(movie_title):
     return []
 
 
+def fetch_collection_movies(collection_title):
+    return fetch_omdb_movie_matches(collection_title)
+
+
+# BGG Helper Functions
 @st.cache_data(ttl=86400)
 def fetch_bgg_game_matches(game_title):
     if not game_title or not game_title.strip():
@@ -458,44 +458,6 @@ def fetch_bgg_game_details(bgg_id, max_retries=3):
             break
 
     return {}
-
-
-def fetch_collection_movies(collection_title):
-    if not OMDB_API_KEY:
-        return []
-    
-    clean_q = collection_title.lower()
-    keywords = ["collection", "trilogy", "quadrilogy", "anthology", "series", "box set", "film set", "bundle", "franchise", "1-", "2-", "3-", "4-", "5-", "6-", "7-", "8-", "9-", "movie", "films"]
-    search_term = clean_q
-    for kw in keywords:
-        search_term = search_term.replace(kw, "")
-    search_term = search_term.strip() or collection_title
-
-    try:
-        encoded_q = urllib.parse.quote_plus(search_term)
-        url = f"http://www.omdbapi.com/?s={encoded_q}&type=movie&apikey={OMDB_API_KEY}"
-        res = requests.get(url, timeout=5).json()
-
-        if res.get("Response") == "True":
-            results = res.get("Search", [])
-            detailed_items = []
-            for item in results[:8]:
-                d_url = f"http://www.omdbapi.com/?i={item['imdbID']}&apikey={OMDB_API_KEY}"
-                d_res = requests.get(d_url, timeout=4).json()
-                if d_res.get("Response") == "True":
-                    detailed_items.append({
-                        "Title": d_res.get("Title", ""),
-                        "Year Released": d_res.get("Year", ""),
-                        "Rating": d_res.get("Rated", ""),
-                        "Length of Movie": d_res.get("Runtime", ""),
-                        "Type": d_res.get("Type", "movie").capitalize(),
-                        "Genre": d_res.get("Genre", ""),
-                        "Image_Path": d_res.get("Poster", "") if d_res.get("Poster") != "N/A" else ""
-                    })
-            return detailed_items
-    except Exception as e:
-        st.error(f"Error expanding collection: {e}")
-    return []
 
 
 def save_multiple_movies_to_csv(file_path, movies_list):
@@ -598,10 +560,12 @@ def logout_user():
 if check_password():
     custom_cats = load_custom_categories()
 
-    if "bulk_kitchen_scan_results" not in st.session_state:
-        st.session_state["bulk_kitchen_scan_results"] = None
+    if "bulk_movie_scan_results" not in st.session_state:
+        st.session_state["bulk_movie_scan_results"] = None
     if "bulk_game_scan_results" not in st.session_state:
         st.session_state["bulk_game_scan_results"] = None
+    if "bulk_kitchen_scan_results" not in st.session_state:
+        st.session_state["bulk_kitchen_scan_results"] = None
 
     for i, c_cat in enumerate(custom_cats):
         key_name = f"bulk_cust_scan_results_{i}"
@@ -857,7 +821,7 @@ if check_password():
                                 safe_st_image(m_item["Image_Path"], use_container_width=True)
                                 st.markdown(f"**{m_item['Title']}** ({m_item['Year Released']})")
                                 st.caption(f"Rated: {m_item['Rating']} | {m_item['Genre']}")
-                                if st.button("✅ Apply Metadata", key=f"btn_apply_omdb_{unique_key_id}_{idx_m}"):
+                                if st.button("✅ Accept & Apply Metadata", key=f"btn_apply_omdb_{unique_key_id}_{idx_m}"):
                                     for k, v in m_item.items():
                                         if k in edit_inputs:
                                             edit_inputs[k] = v
@@ -866,18 +830,6 @@ if check_password():
                                         st.session_state.pop(f"edit_omdb_results_{unique_key_id}", None)
                                         st.success(f"Updated metadata for '{item_id}'!")
                                         st.rerun()
-
-            if "collection" in str(row.get("Type", "")).lower():
-                st.markdown("---")
-                st.subheader(f"🎬 Collection Pack Breakdown for '{item_id}'")
-                st.caption("Expand or auto-unpack child movies contained inside this collection pack:")
-
-                if st.button("🔍 Auto-Unpack Child Movies from Web", key=f"unpack_nested_{unique_key_id}"):
-                    unpacked_childs = fetch_collection_movies(item_id)
-                    if unpacked_childs:
-                        save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_childs)
-                        st.success(f"Unpacked and added {len(unpacked_childs)} child films to inventory!")
-                        st.rerun()
 
         elif category_type == "Board & Card Games":
             st.markdown("---")
@@ -909,7 +861,7 @@ if check_password():
                                 safe_st_image(g_item.get("Image_Path", ""), use_container_width=True)
                                 st.markdown(f"**{g_item['Title']}** ({g_item.get('Year', '')})")
                                 st.caption(f"{g_item.get('Number of Players', '')} | {g_item.get('Length of Play', '')}")
-                                if st.button("✅ Apply Details", key=f"btn_apply_bgg_{unique_key_id}_{idx_g}"):
+                                if st.button("✅ Accept & Apply BGG Details", key=f"btn_apply_bgg_{unique_key_id}_{idx_g}"):
                                     if "Title" in edit_inputs:
                                         edit_inputs["Title"] = g_item["Title"]
                                     if "Number of Players" in edit_inputs and g_item.get("Number of Players"):
@@ -1094,15 +1046,82 @@ if check_password():
 
     # MOVIES TAB
     with tabs[1]:
-        with st.expander("🛠️ Bulk Movie Web Search & Metadata Add"):
-            st.write("Bulk search web movie databases for titles or collection packs:")
-            m_bulk_q = st.text_input("Search Movie or Collection Title", key="bulk_m_query")
-            if st.button("🔍 Search & Add Web Movies in Bulk", key="btn_bulk_m_exec"):
-                unpacked_f = fetch_collection_movies(m_bulk_q)
-                if unpacked_f:
-                    save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_f)
-                    st.success(f"Added {len(unpacked_f)} movie titles from web database!")
+        with st.expander("🛠️ Bulk Movie Metadata & Poster Scanner"):
+            missing_m_mask = (
+                df_movies["Image_Path"].isna()
+                | (df_movies["Image_Path"].astype(str).str.strip() == "")
+                | df_movies["Rating"].isna()
+                | (df_movies["Rating"].astype(str).str.strip() == "")
+            )
+            missing_m_df = df_movies[missing_m_mask]
+
+            if missing_m_df.empty:
+                st.success("🎉 All titles in your Movies database have complete metadata and posters!")
+            else:
+                st.warning(f"Found {len(missing_m_df)} movie(s) missing metadata or posters.")
+                if st.button("🌐 Scan OMDb for Missing Movie Metadata", key="btn_omdb_bulk_scan"):
+                    movie_scan_results = []
+                    progress_bar = st.progress(0)
+
+                    for i, (_, m_row) in enumerate(missing_m_df.iterrows()):
+                        m_title = m_row["Title"]
+                        matches = fetch_omdb_movie_matches(m_title)
+                        if matches:
+                            movie_scan_results.append({
+                                "Original_Title": m_title,
+                                "Match": matches[0]
+                            })
+                        progress_bar.progress((i + 1) / len(missing_m_df))
+
+                    st.session_state["bulk_movie_scan_results"] = movie_scan_results
                     st.rerun()
+
+                if st.session_state.get("bulk_movie_scan_results") is not None:
+                    st.markdown("#### Review Discovered OMDb Metadata")
+                    m_results = st.session_state["bulk_movie_scan_results"]
+
+                    if not m_results:
+                        st.info("No matching metadata was found on OMDb.")
+                    else:
+                        if st.button("⚡ Accept All OMDb Metadata Updates", key="btn_accept_omdb_bulk"):
+                            m_df_csv = safe_load_csv("movies_and_tv_collection.csv", ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"])
+                            for item in m_results:
+                                orig = item["Original_Title"]
+                                match = item["Match"]
+                                mask_m = m_df_csv["Title"].astype(str).str.lower().str.strip() == str(orig).lower().strip()
+                                if mask_m.any():
+                                    idx = m_df_csv[mask_m].index[0]
+                                    for key_name, val in match.items():
+                                        if key_name in m_df_csv.columns and val:
+                                            m_df_csv.at[idx, key_name] = str(val)
+                            m_df_csv.to_csv("movies_and_tv_collection.csv", index=False)
+                            push_csv_to_github("movies_and_tv_collection.csv", "Bulk OMDb metadata update")
+                            st.session_state["bulk_movie_scan_results"] = None
+                            st.success("Updated movie metadata from OMDb!")
+                            st.rerun()
+
+                        st.markdown("---")
+                        m_cols = st.columns(3)
+                        for idx_m_res, m_item in enumerate(m_results):
+                            with m_cols[idx_m_res % 3]:
+                                with st.container(border=True):
+                                    match_data = m_item["Match"]
+                                    safe_st_image(match_data["Image_Path"], use_container_width=True)
+                                    st.markdown(f"**{match_data['Title']}** ({match_data['Year Released']})")
+                                    st.caption(f"Rated: {match_data['Rating']} | {match_data['Genre']}")
+                                    if st.button("✅ Accept Item", key=f"btn_accept_single_m_{idx_m_res}"):
+                                        m_df_csv = safe_load_csv("movies_and_tv_collection.csv", ["Title", "Rating", "Year Released", "Length of Movie", "Type", "Genre", "Image_Path"])
+                                        orig = m_item["Original_Title"]
+                                        mask_m = m_df_csv["Title"].astype(str).str.lower().str.strip() == str(orig).lower().strip()
+                                        if mask_m.any():
+                                            idx = m_df_csv[mask_m].index[0]
+                                            for key_name, val in match_data.items():
+                                                if key_name in m_df_csv.columns and val:
+                                                    m_df_csv.at[idx, key_name] = str(val)
+                                            m_df_csv.to_csv("movies_and_tv_collection.csv", index=False)
+                                            push_csv_to_github("movies_and_tv_collection.csv", f"Add metadata for {orig}")
+                                        st.session_state["bulk_movie_scan_results"].pop(idx_m_res)
+                                        st.rerun()
 
         st.markdown("---")
         display_finder_view(master_df[master_df["Category"] == "Movies & TV"], "movies")
@@ -1113,6 +1132,8 @@ if check_password():
             missing_games_mask = (
                 df_games["Image_Path"].isna()
                 | (df_games["Image_Path"].astype(str).str.strip() == "")
+                | df_games["Number of Players"].isna()
+                | (df_games["Number of Players"].astype(str).str.strip() == "")
             )
             missing_games_df = df_games[missing_games_mask]
 
@@ -1120,7 +1141,7 @@ if check_password():
                 st.success("🎉 All titles in your Board Games database have complete details!")
             else:
                 st.warning(f"Found {len(missing_games_df)} game(s) missing details or box art.")
-                if st.button("🌐 Web Search BGG for Missing Game Box Art", key="btn_bgg_bulk_scan"):
+                if st.button("🌐 Web Search BGG for Missing Game Data", key="btn_bgg_bulk_scan"):
                     game_scan_results = []
                     progress_bar = st.progress(0)
 
@@ -1129,34 +1150,44 @@ if check_password():
                         matches = fetch_bgg_game_matches(g_title)
                         if matches:
                             details = fetch_bgg_game_details(matches[0]["id"])
-                            if details.get("Image_Path"):
-                                game_scan_results.append({
-                                    "Title": g_title,
-                                    "Found_Image": details["Image_Path"],
-                                    "Found_Players": details.get("Number of Players", ""),
-                                })
+                            game_scan_results.append({
+                                "Original_Title": g_title,
+                                "Title": matches[0]["name"],
+                                "Found_Image": details.get("Image_Path", ""),
+                                "Found_Players": details.get("Number of Players", ""),
+                                "Found_Length": details.get("Length of Play", ""),
+                                "Found_Age": details.get("Age Rating", ""),
+                            })
                         progress_bar.progress((i + 1) / len(missing_games_df))
 
                     st.session_state["bulk_game_scan_results"] = game_scan_results
                     st.rerun()
 
                 if st.session_state.get("bulk_game_scan_results") is not None:
-                    st.markdown("#### Review Discovered Web Images")
+                    st.markdown("#### Review Discovered Game Data")
                     g_results = st.session_state["bulk_game_scan_results"]
 
                     if not g_results:
                         st.info("No matching game art was found on BGG.")
                     else:
-                        if st.button("⚡ Accept All BGG Web Box Art", key="btn_accept_bgg_bulk"):
+                        if st.button("⚡ Accept All BGG Web Updates", key="btn_accept_bgg_bulk"):
                             g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
                             for item in g_results:
-                                mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Title"]).lower().strip()
+                                mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(item["Original_Title"]).lower().strip()
                                 if mask_g.any():
-                                    g_df_csv.loc[mask_g, "Image_Path"] = item["Found_Image"]
+                                    idx = g_df_csv[mask_g].index[0]
+                                    if item.get("Found_Image"):
+                                        g_df_csv.at[idx, "Image_Path"] = item["Found_Image"]
+                                    if item.get("Found_Players"):
+                                        g_df_csv.at[idx, "Number of Players"] = item["Found_Players"]
+                                    if item.get("Found_Length"):
+                                        g_df_csv.at[idx, "Length of Play"] = item["Found_Length"]
+                                    if item.get("Found_Age"):
+                                        g_df_csv.at[idx, "Age Rating"] = item["Found_Age"]
                             g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
                             push_csv_to_github("board_and_card_games_collection.csv", "Bulk game metadata update")
                             st.session_state["bulk_game_scan_results"] = None
-                            st.success("Updated game box art from web!")
+                            st.success("Updated game box art and details from BGG!")
                             st.rerun()
 
                         st.markdown("---")
@@ -1166,13 +1197,22 @@ if check_password():
                                 with st.container(border=True):
                                     safe_st_image(g_item["Found_Image"], use_container_width=True)
                                     st.markdown(f"**{g_item['Title']}**")
-                                    if st.button("✅ Accept Image", key=f"btn_accept_single_g_{idx_g_res}"):
+                                    st.caption(f"{g_item['Found_Players']} | {g_item['Found_Length']}")
+                                    if st.button("✅ Accept Item", key=f"btn_accept_single_g_{idx_g_res}"):
                                         g_df_csv = safe_load_csv("board_and_card_games_collection.csv", ["Title", "Number of Players", "Length of Play", "Age Rating", "Style of Game", "Image_Path"])
-                                        mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(g_item["Title"]).lower().strip()
+                                        mask_g = g_df_csv["Title"].astype(str).str.lower().str.strip() == str(g_item["Original_Title"]).lower().strip()
                                         if mask_g.any():
-                                            g_df_csv.loc[mask_g, "Image_Path"] = g_item["Found_Image"]
+                                            idx = g_df_csv[mask_g].index[0]
+                                            if g_item.get("Found_Image"):
+                                                g_df_csv.at[idx, "Image_Path"] = g_item["Found_Image"]
+                                            if g_item.get("Found_Players"):
+                                                g_df_csv.at[idx, "Number of Players"] = g_item["Found_Players"]
+                                            if g_item.get("Found_Length"):
+                                                g_df_csv.at[idx, "Length of Play"] = g_item["Found_Length"]
+                                            if g_item.get("Found_Age"):
+                                                g_df_csv.at[idx, "Age Rating"] = g_item["Found_Age"]
                                             g_df_csv.to_csv("board_and_card_games_collection.csv", index=False)
-                                            push_csv_to_github("board_and_card_games_collection.csv", f"Add box art for {g_item['Title']}")
+                                            push_csv_to_github("board_and_card_games_collection.csv", f"Add BGG details for {g_item['Original_Title']}")
                                         st.session_state["bulk_game_scan_results"].pop(idx_g_res)
                                         st.rerun()
 
