@@ -379,28 +379,55 @@ def fetch_bgg_game_matches(game_title):
     if not game_title or not game_title.strip():
         return []
 
-    try:
-        encoded_q = urllib.parse.quote_plus(game_title.strip())
-        url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
-        headers = {
-            "User-Agent": "HomeInventoryApp/1.0 (Python Streamlit Inventory Tool)",
-            "Accept": "text/xml,application/xml"
-        }
-        if BGG_API_TOKEN:
-            headers["Authorization"] = f"Bearer {BGG_API_TOKEN}"
+    clean_title = game_title.strip()
+    encoded_q = urllib.parse.quote_plus(clean_title)
+    headers = {
+        "User-Agent": "HomeInventoryApp/1.0 (Python Streamlit Inventory Tool)",
+        "Accept": "text/xml,application/xml"
+    }
+    if BGG_API_TOKEN:
+        headers["Authorization"] = f"Bearer {BGG_API_TOKEN}"
 
-        res = requests.get(url, headers=headers, timeout=8)
-        if res.status_code == 200:
-            root = ET.fromstring(res.content)
-            items = []
-            for item in root.findall("item")[:8]:
+    items = []
+
+    try:
+        # TIER 1: Try exact match search first
+        exact_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame&exact=1"
+        res_exact = requests.get(exact_url, headers=headers, timeout=8)
+        if res_exact.status_code == 200:
+            root = ET.fromstring(res_exact.content)
+            for item in root.findall("item"):
                 bgg_id = item.attrib.get("id")
                 name_elem = item.find("name")
-                name = name_elem.attrib.get("value") if name_elem is not None else game_title
+                name = name_elem.attrib.get("value") if name_elem is not None else clean_title
                 year_elem = item.find("yearpublished")
                 year = year_elem.attrib.get("value") if year_elem is not None else ""
                 items.append({"id": bgg_id, "name": name, "year": year})
-            return items
+
+        # TIER 2: Broad search if needed
+        if len(items) < 8:
+            search_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
+            res_broad = requests.get(search_url, headers=headers, timeout=8)
+            if res_broad.status_code == 200:
+                root = ET.fromstring(res_broad.content)
+                existing_ids = {i["id"] for i in items}
+                broad_items = []
+                
+                for item in root.findall("item"):
+                    bgg_id = item.attrib.get("id")
+                    if bgg_id in existing_ids:
+                        continue
+                    
+                    name_elem = item.find("name")
+                    name = name_elem.attrib.get("value") if name_elem is not None else clean_title
+                    year_elem = item.find("yearpublished")
+                    year = year_elem.attrib.get("value") if year_elem is not None else ""
+                    broad_items.append({"id": bgg_id, "name": name, "year": year})
+
+                broad_items.sort(key=lambda x: (abs(len(x["name"]) - len(clean_title)), x["name"].lower()))
+                items.extend(broad_items)
+
+        return items[:8]
     except Exception as e:
         st.error(f"BGG Fetch Error: {e}")
     return []
