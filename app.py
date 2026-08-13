@@ -278,7 +278,7 @@ def push_image_to_github(uploaded_file):
 
 
 # -----------------------------------------------------------------------------
-# 4. DATA & SCHEMA HELPERS
+# 4. DATA, API & SCHEMA HELPERS
 # -----------------------------------------------------------------------------
 CUSTOM_CATEGORIES_FILE = "custom_categories_registry.csv"
 
@@ -343,6 +343,38 @@ def save_custom_category(cat_name, icon, primary_col, fields_list):
     push_csv_to_github(CUSTOM_CATEGORIES_FILE, f"Register category '{cat_name}'")
 
 
+def fetch_omdb_movie_matches(movie_title):
+    if not OMDB_API_KEY or not movie_title or not str(movie_title).strip():
+        return []
+
+    try:
+        encoded_q = urllib.parse.quote_plus(str(movie_title).strip())
+        url = f"http://www.omdbapi.com/?s={encoded_q}&apikey={OMDB_API_KEY}"
+        res = requests.get(url, timeout=5).json()
+
+        if res.get("Response") == "True":
+            results = res.get("Search", [])
+            matches = []
+            for item in results[:6]:
+                d_url = f"http://www.omdbapi.com/?i={item['imdbID']}&apikey={OMDB_API_KEY}"
+                d_res = requests.get(d_url, timeout=4).json()
+                if d_res.get("Response") == "True":
+                    matches.append({
+                        "Title": d_res.get("Title", ""),
+                        "Year Released": d_res.get("Year", ""),
+                        "Rating": d_res.get("Rated", ""),
+                        "Length of Movie": d_res.get("Runtime", ""),
+                        "Type": d_res.get("Type", "movie").capitalize(),
+                        "Genre": d_res.get("Genre", ""),
+                        "Image_Path": d_res.get("Poster", "") if d_res.get("Poster") != "N/A" else ""
+                    })
+            return matches
+    except Exception as e:
+        st.error(f"OMDb Search Error: {e}")
+    return []
+
+
+@st.cache_data(ttl=86400)
 def fetch_bgg_game_matches(game_title):
     if not game_title or not game_title.strip():
         return []
@@ -374,49 +406,57 @@ def fetch_bgg_game_matches(game_title):
     return []
 
 
-def fetch_bgg_game_details(bgg_id):
+@st.cache_data(ttl=86400)
+def fetch_bgg_game_details(bgg_id, max_retries=3):
     if not bgg_id:
         return {}
 
-    try:
-        url = f"https://boardgamegeek.com/xmlapi2/thing?id={bgg_id}"
-        headers = {
-            "User-Agent": "HomeInventoryApp/1.0 (Python Streamlit Inventory Tool)",
-            "Accept": "text/xml,application/xml"
-        }
-        if BGG_API_TOKEN:
-            headers["Authorization"] = f"Bearer {BGG_API_TOKEN}"
+    url = f"https://boardgamegeek.com/xmlapi2/thing?id={bgg_id}"
+    headers = {
+        "User-Agent": "HomeInventoryApp/1.0 (Python Streamlit Inventory Tool)",
+        "Accept": "text/xml,application/xml"
+    }
+    if BGG_API_TOKEN:
+        headers["Authorization"] = f"Bearer {BGG_API_TOKEN}"
 
-        res = requests.get(url, headers=headers, timeout=8)
-        if res.status_code == 200:
-            root = ET.fromstring(res.content)
-            item = root.find("item")
-            if item is not None:
-                image_elem = item.find("thumbnail")
-                if image_elem is None or not image_elem.text:
+    for attempt in range(max_retries):
+        try:
+            res = requests.get(url, headers=headers, timeout=8)
+            if res.status_code == 202:
+                time.sleep(2 * (attempt + 1))
+                continue
+
+            if res.status_code == 200:
+                root = ET.fromstring(res.content)
+                item = root.find("item")
+                if item is not None:
                     image_elem = item.find("image")
-                image_url = image_elem.text if image_elem is not None else ""
+                    if image_elem is None or not image_elem.text:
+                        image_elem = item.find("thumbnail")
+                    image_url = image_elem.text if image_elem is not None else ""
 
-                min_p = item.find("minplayers").attrib.get("value") if item.find("minplayers") is not None else ""
-                max_p = item.find("maxplayers").attrib.get("value") if item.find("maxplayers") is not None else ""
-                players = f"{min_p}-{max_p} Players" if min_p and max_p and min_p != max_p else f"{min_p} Players"
+                    min_p = item.find("minplayers").attrib.get("value") if item.find("minplayers") is not None else ""
+                    max_p = item.find("maxplayers").attrib.get("value") if item.find("maxplayers") is not None else ""
+                    players = f"{min_p}-{max_p} Players" if min_p and max_p and min_p != max_p else f"{min_p} Players"
 
-                min_t = item.find("minplaytime").attrib.get("value") if item.find("minplaytime") is not None else ""
-                max_t = item.find("maxplaytime").attrib.get("value") if item.find("maxplaytime") is not None else ""
-                length = f"{min_t}-{max_t} min" if min_t and max_t and min_t != max_t else f"{min_t} min"
+                    min_t = item.find("minplaytime").attrib.get("value") if item.find("minplaytime") is not None else ""
+                    max_t = item.find("maxplaytime").attrib.get("value") if item.find("maxplaytime") is not None else ""
+                    length = f"{min_t}-{max_t} min" if min_t and max_t and min_t != max_t else f"{min_t} min"
 
-                age = item.find("minage").attrib.get("value") if item.find("minage") is not None else ""
-                if age and age != "0":
-                    age = f"{age}+"
+                    age = item.find("minage").attrib.get("value") if item.find("minage") is not None else ""
+                    if age and age != "0":
+                        age = f"{age}+"
 
-                return {
-                    "Image_Path": image_url,
-                    "Number of Players": players,
-                    "Length of Play": length,
-                    "Age Rating": age,
-                }
-    except Exception as e:
-        st.error(f"BGG Detail Fetch Error: {e}")
+                    return {
+                        "Image_Path": image_url,
+                        "Number of Players": players,
+                        "Length of Play": length,
+                        "Age Rating": age,
+                    }
+        except Exception as e:
+            st.error(f"BGG Detail Fetch Error: {e}")
+            break
+
     return {}
 
 
@@ -788,16 +828,111 @@ if check_password():
                 st.session_state[input_key] = str(row.get(col_name, ""))
             edit_inputs[col_name] = st.text_input(f"{col_name}", key=input_key)
 
-        uploaded_img_file = st.file_uploader(f"Upload Image File for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}")
+        uploaded_img_file = st.file_uploader(
+            f"Upload Image File for {item_id}", type=["jpg", "png", "jpeg"], key=f"upload_{unique_key_id}"
+        )
 
         category_type = str(row.get("Category", ""))
-        is_kitchen_or_custom = category_type == "Kitchen Gear" or any(c["Name"] == category_type for c in custom_cats)
 
-        if is_kitchen_or_custom:
+        # Category-Specific API Integration Logic
+        if category_type == "Movies & TV":
+            st.markdown("---")
+            st.caption("🎬 Search OMDb Database for Metadata & Poster:")
+            omdb_q_input = st.text_input("OMDb Movie Search Terms", value=item_id, key=f"omdb_q_{unique_key_id}")
+
+            if st.button("🔍 Search OMDb", key=f"btn_search_omdb_{unique_key_id}"):
+                found_omdb = fetch_omdb_movie_matches(omdb_q_input)
+                st.session_state[f"edit_omdb_results_{unique_key_id}"] = found_omdb
+
+            if st.session_state.get(f"edit_omdb_results_{unique_key_id}"):
+                omdb_results = st.session_state[f"edit_omdb_results_{unique_key_id}"]
+                if not omdb_results:
+                    st.info("No OMDb matches found for this query.")
+                else:
+                    st.markdown("##### Select a Matching Movie:")
+                    grid_cols = st.columns(min(len(omdb_results), 4))
+                    for idx_m, m_item in enumerate(omdb_results):
+                        with grid_cols[idx_m % 4]:
+                            with st.container(border=True):
+                                safe_st_image(m_item["Image_Path"], use_container_width=True)
+                                st.markdown(f"**{m_item['Title']}** ({m_item['Year Released']})")
+                                st.caption(f"Rated: {m_item['Rating']} | {m_item['Genre']}")
+                                if st.button("✅ Apply Metadata", key=f"btn_apply_omdb_{unique_key_id}_{idx_m}"):
+                                    for k, v in m_item.items():
+                                        if k in edit_inputs:
+                                            edit_inputs[k] = v
+                                    if save_edited_row(file_path, item_id, edit_inputs, title_col):
+                                        st.session_state[f"expand_edit_{unique_key_id}"] = False
+                                        st.session_state.pop(f"edit_omdb_results_{unique_key_id}", None)
+                                        st.success(f"Updated metadata for '{item_id}'!")
+                                        st.rerun()
+
+            if "collection" in str(row.get("Type", "")).lower():
+                st.markdown("---")
+                st.subheader(f"🎬 Collection Pack Breakdown for '{item_id}'")
+                st.caption("Expand or auto-unpack child movies contained inside this collection pack:")
+
+                if st.button("🔍 Auto-Unpack Child Movies from Web", key=f"unpack_nested_{unique_key_id}"):
+                    unpacked_childs = fetch_collection_movies(item_id)
+                    if unpacked_childs:
+                        save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_childs)
+                        st.success(f"Unpacked and added {len(unpacked_childs)} child films to inventory!")
+                        st.rerun()
+
+        elif category_type == "Board & Card Games":
+            st.markdown("---")
+            st.caption("🎲 Search BoardGameGeek Database for Details & Box Art:")
+            bgg_q_input = st.text_input("BGG Game Search Terms", value=item_id, key=f"bgg_q_{unique_key_id}")
+
+            if st.button("🔍 Search BGG", key=f"btn_search_bgg_{unique_key_id}"):
+                bgg_matches = fetch_bgg_game_matches(bgg_q_input)
+                detailed_bgg = []
+                for match in bgg_matches:
+                    details = fetch_bgg_game_details(match["id"])
+                    detailed_bgg.append({
+                        "Title": match["name"],
+                        "Year": match["year"],
+                        **details
+                    })
+                st.session_state[f"edit_bgg_results_{unique_key_id}"] = detailed_bgg
+
+            if st.session_state.get(f"edit_bgg_results_{unique_key_id}"):
+                bgg_results = st.session_state[f"edit_bgg_results_{unique_key_id}"]
+                if not bgg_results:
+                    st.info("No BGG matches found for this query.")
+                else:
+                    st.markdown("##### Select a Matching Game:")
+                    grid_cols = st.columns(min(len(bgg_results), 4))
+                    for idx_g, g_item in enumerate(bgg_results):
+                        with grid_cols[idx_g % 4]:
+                            with st.container(border=True):
+                                safe_st_image(g_item.get("Image_Path", ""), use_container_width=True)
+                                st.markdown(f"**{g_item['Title']}** ({g_item.get('Year', '')})")
+                                st.caption(f"{g_item.get('Number of Players', '')} | {g_item.get('Length of Play', '')}")
+                                if st.button("✅ Apply Details", key=f"btn_apply_bgg_{unique_key_id}_{idx_g}"):
+                                    if "Title" in edit_inputs:
+                                        edit_inputs["Title"] = g_item["Title"]
+                                    if "Number of Players" in edit_inputs and g_item.get("Number of Players"):
+                                        edit_inputs["Number of Players"] = g_item["Number of Players"]
+                                    if "Length of Play" in edit_inputs and g_item.get("Length of Play"):
+                                        edit_inputs["Length of Play"] = g_item["Length of Play"]
+                                    if "Age Rating" in edit_inputs and g_item.get("Age Rating"):
+                                        edit_inputs["Age Rating"] = g_item["Age Rating"]
+                                    if "Image_Path" in edit_inputs and g_item.get("Image_Path"):
+                                        edit_inputs["Image_Path"] = g_item["Image_Path"]
+
+                                    if save_edited_row(file_path, item_id, edit_inputs, title_col):
+                                        st.session_state[f"expand_edit_{unique_key_id}"] = False
+                                        st.session_state.pop(f"edit_bgg_results_{unique_key_id}", None)
+                                        st.success(f"Updated details for '{item_id}'!")
+                                        st.rerun()
+
+        else:
+            # General Web Image Search Fallback for Kitchen Gear and Custom Categories
             st.markdown("---")
             st.caption("🌐 Search Web Product Images (Returns Close Matches):")
             search_query_input = st.text_input("Web Search Terms", value=item_id, key=f"web_q_{unique_key_id}")
-            
+
             if st.button("🔍 Search Web Photos", key=f"btn_search_web_{unique_key_id}"):
                 found_imgs = search_multiple_web_images(search_query_input, num_results=8)
                 st.session_state[f"edit_search_results_{unique_key_id}"] = found_imgs
@@ -820,18 +955,6 @@ if check_password():
                                         st.session_state.pop(f"edit_search_results_{unique_key_id}", None)
                                         st.success(f"Saved image for '{item_id}'!")
                                         st.rerun()
-
-        if category_type == "Movies & TV" and "collection" in str(row.get("Type", "")).lower():
-            st.markdown("---")
-            st.subheader(f"🎬 Collection Pack Breakdown for '{item_id}'")
-            st.caption("Expand or auto-unpack child movies contained inside this collection pack:")
-            
-            if st.button("🔍 Auto-Unpack Child Movies from Web", key=f"unpack_nested_{unique_key_id}"):
-                unpacked_childs = fetch_collection_movies(item_id)
-                if unpacked_childs:
-                    save_multiple_movies_to_csv("movies_and_tv_collection.csv", unpacked_childs)
-                    st.success(f"Unpacked and added {len(unpacked_childs)} child films to inventory!")
-                    st.rerun()
 
         st.markdown("---")
         col1, col2 = st.columns(2)
