@@ -1,4 +1,5 @@
 import difflib
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
@@ -9,6 +10,7 @@ from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
 from app.integrations.omdb import fetch_omdb_movie_matches
+from app.integrations.tmdb import search_tmdb
 from app.models import Item
 from app.repository import Repository, get_repository
 from app.storage import get_image_storage
@@ -40,6 +42,31 @@ def _fuzzy_filter(items: list[Item], query: str) -> list[Item]:
         return difflib.SequenceMatcher(None, query, name).ratio() >= 0.5
 
     return [item for item in items if matches(item)]
+
+
+_TRAILING_PAREN = re.compile(r"\s*\([^)]*\)\s*$")
+_COLLECTION_SUFFIX = re.compile(r"\s*\d*-?\s*movies?\s+collection\s*$", re.IGNORECASE)
+_PACKAGING_WORD = re.compile(r"\s+(?:collection|trilogy|double feature)\s*$", re.IGNORECASE)
+
+
+def _clean_movie_query(raw: str) -> str:
+    """Inventory item names are retail packaging text ("Transformers 4-Movie
+    Collection", "X-Men / X2 / X-Men: The Last Stand (Trilogy)", "Planet of the
+    Apes Trilogy"), not the clean title a movie database indexes under. Strip that
+    down to something searchable: take the first title out of a slash-separated
+    multi-pack, then repeatedly drop a trailing parenthetical (edition/format
+    label) or box-set word ("N-Movie(s) Collection", "Collection", "Trilogy",
+    "Double Feature") until neither pattern matches anymore.
+    """
+    q = raw.split(" / ")[0].strip()
+    while True:
+        stripped = _TRAILING_PAREN.sub("", q).strip()
+        stripped = _COLLECTION_SUFFIX.sub("", stripped).strip()
+        stripped = _PACKAGING_WORD.sub("", stripped).strip()
+        if stripped == q:
+            break
+        q = stripped
+    return q or raw.strip()
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -161,11 +188,27 @@ def _target_id(item_id: str, panel: str) -> str:
 @router.get("/items/{item_id}/lookup/omdb", response_class=HTMLResponse)
 def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
+    cleaned_q = _clean_movie_query(q)
+
     matches = fetch_omdb_movie_matches(q)
+    if not matches and cleaned_q != q:
+        matches = fetch_omdb_movie_matches(cleaned_q)
+    note = None
+
+    if not matches:
+        # OMDb only indexes individual titles -- a box-set/collection name (or any title
+        # it doesn't have) won't match. TMDb also has real "collection" entries for
+        # franchises/box-sets, so it's a much better fallback than a generic image search.
+        # Search on the cleaned title ("Transformers 4-Movie Collection" -> "Transformers"),
+        # since the literal retail packaging text rarely matches either database directly.
+        matches = search_tmdb(cleaned_q)
+        if matches:
+            note = "No OMDb match (common for box-set/collection titles) -- showing TMDb results for '" + cleaned_q + "' instead. Collection hits only set the poster/title, not rating or genre."
+
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {"item": item, "matches": matches, "kind": "omdb", "target_id": _target_id(item_id, panel), "panel": panel},
+        {"item": item, "matches": matches, "kind": "omdb", "target_id": _target_id(item_id, panel), "panel": panel, "note": note},
     )
 
 

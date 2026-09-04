@@ -1,6 +1,7 @@
 {% if not matches %}
 <p class="empty">No matches found.</p>
 {% else %}
+{% if note %}<p class="lookup-note">ℹ️ {{ note }}</p>{% endif %}
 <div class="lookup-grid">
   {% for m in matches %}
   <div class="lookup-card">

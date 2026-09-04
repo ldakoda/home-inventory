@@ -20,6 +20,7 @@ class Settings:
         self.gcs_bucket_name = os.getenv("GCS_BUCKET_NAME", "")
 
         self.omdb_api_key = os.getenv("OMDB_KEY", "")
+        self.tmdb_api_key = os.getenv("TMDB_KEY", "")
         self.bgg_api_token = os.getenv("BGG_TOKEN", "")
         self.emoji_api_key = os.getenv("EMOJI_API_KEY", "")
 
