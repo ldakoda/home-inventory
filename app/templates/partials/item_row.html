@@ -1,0 +1,16 @@
+<div id="item-{{ item.id }}" class="item-row">
+  <div class="item-thumb">
+    {% if item.image_path %}
+    <img src="{{ item.image_path }}" loading="lazy" alt="">
+    {% else %}
+    <span class="emoji">{{ item.category.icon }}</span>
+    {% endif %}
+  </div>
+  <div class="item-main">
+    <div class="item-name">{{ item.name }}</div>
+    <div class="item-meta">{{ item.category.icon }} {{ item.category.name }}</div>
+  </div>
+  <div class="item-actions">
+    <button class="btn-plain" hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML">✏️ Edit</button>
+  </div>
+</div>

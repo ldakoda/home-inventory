@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/
+uploaded_images/
+legacy_streamlit_app/
+*.csv
+.git/

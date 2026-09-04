@@ -1,0 +1,26 @@
+{% if not matches %}
+<p class="empty">No matches found.</p>
+{% else %}
+<div class="lookup-grid">
+  {% for m in matches %}
+  <div class="lookup-card">
+    {% if m.image_path %}<img src="{{ m.image_path }}" alt="">{% endif %}
+    {% if m.Title %}<div class="lookup-title">{{ m.Title }}{% if m.get("Year Released") %} ({{ m["Year Released"] }}){% endif %}</div>{% endif %}
+
+    {% if kind == "bgg" and m.get("id") %}
+    <button type="button" class="btn-primary"
+      onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent('{{ m.Title|e }}'), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+      Select
+    </button>
+    {% else %}
+    <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#item-{{ item.id }}" hx-swap="outerHTML">
+      {% for k, v in m.items() %}
+      {% if k != "id" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}
+      {% endfor %}
+      <button type="submit" class="btn-primary">✅ Apply</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

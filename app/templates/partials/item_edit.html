@@ -1,0 +1,53 @@
+<div id="item-{{ item.id }}" class="item-edit">
+  <form hx-put="/items/{{ item.id }}" hx-target="#item-{{ item.id }}" hx-swap="outerHTML" hx-encoding="multipart/form-data">
+    <h4>✏️ Editing: {{ item.name }}</h4>
+
+    {% for field in item.category.fields %}
+    <label>{{ field }}{{ ' *' if field == item.category.primary_field else '' }}</label>
+    <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}">
+    {% endfor %}
+
+    <label>Photo URL</label>
+    <input type="text" name="image_url" value="{{ item.image_path or '' }}">
+    <label>Or upload a new image file</label>
+    <input type="file" name="image_file" accept="image/*">
+
+    <div class="edit-actions">
+      <button type="submit" class="btn-primary">💾 Save Changes</button>
+      <button type="button" class="btn-plain" hx-get="/items/{{ item.id }}/row" hx-target="#item-{{ item.id }}" hx-swap="outerHTML">Cancel</button>
+      <button type="button" class="btn-danger" hx-delete="/items/{{ item.id }}" hx-target="#item-{{ item.id }}" hx-swap="outerHTML" hx-confirm="Delete '{{ item.name }}'? This cannot be undone.">🗑️ Delete</button>
+    </div>
+  </form>
+
+  <div class="lookup-panel">
+    {% if item.category.slug == "movies" %}
+    <p class="lookup-label">🎬 Search OMDb for metadata &amp; poster:</p>
+    <div class="lookup-search-row">
+      <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
+      <button type="button" class="btn-plain"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/omdb?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+        🔍 Search OMDb
+      </button>
+    </div>
+    {% elif item.category.slug == "games" %}
+    <p class="lookup-label">🎲 Search BoardGameGeek for details &amp; box art:</p>
+    <div class="lookup-search-row">
+      <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
+      <button type="button" class="btn-plain"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+        🔍 Search BGG
+      </button>
+    </div>
+    {% else %}
+    <p class="lookup-label">🌐 Search the web for a product photo:</p>
+    <div class="lookup-search-row">
+      <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
+      <button type="button" class="btn-plain"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/web-images?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+        🔍 Search Web Photos
+      </button>
+    </div>
+    {% endif %}
+    <div id="lookup-results-{{ item.id }}"></div>
+  </div>
+</div>

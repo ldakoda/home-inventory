@@ -1,0 +1,7 @@
+<div id="category-tabs" class="tabs" {% if oob %}hx-swap-oob="true"{% endif %}>
+  <button type="button" class="tab {{ 'active' if active_category == 'all' or not active_category else '' }}" onclick="selectCategory('all', this)">🌐 All</button>
+  {% for c in categories %}
+  <button type="button" class="tab {{ 'active' if active_category == c.slug else '' }}" onclick="selectCategory('{{ c.slug }}', this)">{{ c.icon }} {{ c.name }}</button>
+  {% endfor %}
+  <button type="button" class="tab tab-add" hx-get="/categories/new" hx-target="#category-form-slot" hx-swap="innerHTML">➕ Add Category</button>
+</div>

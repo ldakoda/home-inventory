@@ -1,6 +1,11 @@
-streamlit
-pandas
+fastapi
+uvicorn[standard]
+python-dotenv
+jinja2
+python-multipart
+sqlalchemy
+bcrypt
+itsdangerous
 requests
-PyGithub
 duckduckgo-search
-extra-streamlit-components
+pandas

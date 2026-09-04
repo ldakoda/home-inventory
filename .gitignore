@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# SQLite database - lives on the server, not in git
+data/*.db
+data/*.db-journal
+
+# User uploads - stop committing every upload as a git blob (see legacy_streamlit_app
+# for the old push_image_to_github pattern this replaces). Existing tracked images stay
+# tracked; new ones just won't be added.
+uploaded_images/*
+!uploaded_images/.gitkeep

@@ -1,0 +1,4 @@
+{% for field in category.fields %}
+<label>{{ field }}{{ ' *' if field == category.primary_field else '' }}</label>
+<input type="text" name="{{ field }}" value="{{ values.get(field, '') if values else '' }}">
+{% endfor %}

@@ -1,0 +1,25 @@
+<div class="panel">
+  <h3>➕ Add New Item</h3>
+  <form hx-post="/items" hx-target="#add-item-slot" hx-swap="innerHTML" hx-encoding="multipart/form-data">
+    <label>Category</label>
+    <select name="category_slug" onchange="htmx.ajax('GET', '/categories/'+this.value+'/fields', {target: '#dynamic-fields', swap: 'innerHTML'})">
+      {% for c in categories %}
+      <option value="{{ c.slug }}" {{ 'selected' if c.slug == category.slug else '' }}>{{ c.icon }} {{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <div id="dynamic-fields">
+      {% include "partials/field_inputs.html" %}
+    </div>
+
+    <label>Photo URL</label>
+    <input type="text" name="image_url">
+    <label>Or upload an image file</label>
+    <input type="file" name="image_file" accept="image/*">
+
+    <div class="edit-actions">
+      <button type="submit" class="btn-primary">💾 Save</button>
+      <button type="button" class="btn-plain" onclick="document.getElementById('add-item-slot').innerHTML=''">Cancel</button>
+    </div>
+  </form>
+</div>

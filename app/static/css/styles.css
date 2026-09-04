@@ -1,0 +1,131 @@
+:root {
+  --bg: #f5f6f8;
+  --panel: #ffffff;
+  --border: #e0e2e6;
+  --text: #1c1e21;
+  --text-muted: #6b7280;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --danger: #dc2626;
+  --hover: #f0f2f5;
+  --radius: 8px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #16181c;
+    --panel: #202226;
+    --border: #33363b;
+    --text: #e6e8eb;
+    --text-muted: #9aa0a6;
+    --accent: #3b82f6;
+    --accent-text: #ffffff;
+    --danger: #f87171;
+    --hover: #2a2d32;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.page { max-width: 960px; margin: 0 auto; padding: 16px; }
+
+.login-box {
+  max-width: 320px;
+  margin: 80px auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+}
+.login-box form { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+
+#toolbar { margin-bottom: 16px; }
+.toolbar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.toolbar-row h2 { margin: 0; }
+.logout-form { margin-left: auto; }
+
+input[type="search"], input[type="text"], input[type="password"], input[type="file"], select, textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.95rem;
+  margin-bottom: 8px;
+}
+textarea { min-height: 60px; resize: vertical; }
+label { font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 2px; }
+
+button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); border: 1px solid transparent; padding: 7px 14px; }
+.btn-primary { background: var(--accent); color: var(--accent-text); }
+.btn-plain { background: var(--panel); color: var(--text); border-color: var(--border); }
+.btn-plain:hover { background: var(--hover); }
+.btn-danger { background: transparent; color: var(--danger); border-color: var(--danger); }
+
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.tab { background: var(--panel); border: 1px solid var(--border); color: var(--text-muted); }
+.tab.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.tab-add { border-style: dashed; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin: 10px 0;
+}
+.edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+#items-list { display: flex; flex-direction: column; gap: 6px; }
+.item-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.item-thumb { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.item-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.item-thumb .emoji { font-size: 1.4rem; }
+.item-main { flex: 1; min-width: 0; }
+.item-name { font-weight: 600; }
+.item-meta { font-size: 0.8rem; color: var(--text-muted); }
+
+.item-edit {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 16px;
+}
+.lookup-panel { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.lookup-label { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 6px; }
+.lookup-search-row { display: flex; gap: 8px; align-items: flex-start; }
+.lookup-search-row input { flex: 1; }
+.lookup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
+.lookup-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  text-align: center;
+}
+.lookup-card img { width: 100%; height: 100px; object-fit: cover; border-radius: 6px; margin-bottom: 6px; }
+.lookup-title { font-size: 0.8rem; margin-bottom: 6px; }
+
+.error { color: var(--danger); }
+.empty { color: var(--text-muted); text-align: center; padding: 24px; }
+
+@media (max-width: 640px) {
+  .item-meta { display: none; }
+}

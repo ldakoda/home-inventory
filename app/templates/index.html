@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<div id="toolbar">
+  <div class="toolbar-row">
+    <h2>🏠 Home Inventory</h2>
+    <form action="/logout" method="post" class="logout-form"><button class="btn-plain">🚪 Log Out</button></form>
+  </div>
+
+  <input type="search" id="search-q" name="q" placeholder="🔍 Search inventory..."
+         hx-get="/items" hx-target="#items-list" hx-swap="innerHTML"
+         hx-trigger="keyup changed delay:300ms, search-now" hx-include="#category-filter">
+  <input type="hidden" id="category-filter" name="category" value="all">
+
+  {% include "partials/category_tabs.html" %}
+  <div id="category-form-slot"></div>
+
+  <button class="btn-primary" hx-get="/items/new" hx-target="#add-item-slot" hx-swap="innerHTML">➕ Add Item</button>
+  <div id="add-item-slot"></div>
+</div>
+
+<div id="items-list" hx-trigger="refreshList from:body" hx-get="/items" hx-include="#search-q,#category-filter" hx-swap="innerHTML">
+  {% include "partials/item_list.html" %}
+</div>
+
+<script>
+function selectCategory(slug, btn) {
+  document.getElementById('category-filter').value = slug;
+  document.querySelectorAll('#category-tabs .tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  htmx.trigger(document.getElementById('search-q'), 'search-now');
+}
+</script>
+{% endblock %}

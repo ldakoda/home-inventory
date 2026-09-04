@@ -1,0 +1,7 @@
+{% if items %}
+{% for item in items %}
+{% include "partials/item_row.html" %}
+{% endfor %}
+{% else %}
+<p class="empty">No items found.</p>
+{% endif %}

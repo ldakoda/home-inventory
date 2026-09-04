@@ -1,0 +1,22 @@
+<div class="panel">
+  <h3>🛠️ Create New Category</h3>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
+  <form hx-post="/categories" hx-target="#category-form-slot" hx-swap="innerHTML">
+    <label>Category Name *</label>
+    <input type="text" name="name" placeholder="e.g. Power Tools, Books" required>
+
+    <label>Icon (paste an emoji)</label>
+    <input type="text" name="icon" value="📦" maxlength="8">
+
+    <label>Primary Field (the item's display name) *</label>
+    <input type="text" name="primary_field" value="Item Name" required>
+
+    <label>Other Fields (comma-separated)</label>
+    <textarea name="raw_fields" placeholder="Brand, Model, Serial Number, Purchase Date, Price"></textarea>
+
+    <div class="edit-actions">
+      <button type="submit" class="btn-primary">🚀 Save Category</button>
+      <button type="button" class="btn-plain" onclick="document.getElementById('category-form-slot').innerHTML=''">Cancel</button>
+    </div>
+  </form>
+</div>

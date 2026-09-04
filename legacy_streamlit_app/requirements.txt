@@ -1,0 +1,6 @@
+streamlit
+pandas
+requests
+PyGithub
+duckduckgo-search
+extra-streamlit-components
