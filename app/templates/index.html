@@ -14,6 +14,9 @@
   {% include "partials/category_tabs.html" %}
   <div id="category-form-slot"></div>
 
+  <div id="missing-metadata-banner"></div>
+  <div id="missing-metadata-panel-slot"></div>
+
   <button class="btn-primary" hx-get="/items/new" hx-target="#add-item-slot" hx-swap="innerHTML">➕ Add Item</button>
   <div id="add-item-slot"></div>
 </div>
@@ -28,6 +31,15 @@ function selectCategory(slug, btn) {
   document.querySelectorAll('#category-tabs .tab').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   htmx.trigger(document.getElementById('search-q'), 'search-now');
+  refreshMissingMetaBanner();
 }
+
+function refreshMissingMetaBanner() {
+  const slug = document.getElementById('category-filter').value;
+  htmx.ajax('GET', '/categories/' + slug + '/missing-metadata', {target: '#missing-metadata-banner', swap: 'innerHTML'});
+}
+document.body.addEventListener('refreshList', refreshMissingMetaBanner);
+document.body.addEventListener('refreshMissingMeta', refreshMissingMetaBanner);
+refreshMissingMetaBanner();
 </script>
 {% endblock %}

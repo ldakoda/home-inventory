@@ -1,0 +1,7 @@
+{% if count > 0 %}
+<button type="button" class="btn-warning"
+  hx-get="/categories/{{ category_slug }}/missing-metadata/panel"
+  hx-target="#missing-metadata-panel-slot" hx-swap="innerHTML">
+  ⚠️ {{ count }} {{ 'item' if count == 1 else 'items' }} missing metadata
+</button>
+{% endif %}

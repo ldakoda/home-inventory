@@ -154,12 +154,18 @@ def delete_item(item_id: str, repo: Repository = Depends(get_repository)):
     return Response("", status_code=200)
 
 
+def _target_id(item_id: str, panel: str) -> str:
+    return f"missing-meta-item-{item_id}" if panel == "missing" else f"item-{item_id}"
+
+
 @router.get("/items/{item_id}/lookup/omdb", response_class=HTMLResponse)
-def lookup_omdb(request: Request, item_id: str, q: str, repo: Repository = Depends(get_repository)):
+def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
     matches = fetch_omdb_movie_matches(q)
     return templates.TemplateResponse(
-        request, "partials/lookup_results.html", {"item": item, "matches": matches, "kind": "omdb"}
+        request,
+        "partials/lookup_results.html",
+        {"item": item, "matches": matches, "kind": "omdb", "target_id": _target_id(item_id, panel), "panel": panel},
     )
 
 
@@ -171,7 +177,9 @@ def lookup_bgg(request: Request, item_id: str, q: str, repo: Repository = Depend
     for m in raw_matches[:8]:
         matches.append({"id": m["id"], "Title": m["name"], "Year Released": m.get("year", "")})
     return templates.TemplateResponse(
-        request, "partials/lookup_results.html", {"item": item, "matches": matches, "kind": "bgg"}
+        request,
+        "partials/lookup_results.html",
+        {"item": item, "matches": matches, "kind": "bgg", "target_id": _target_id(item_id, ""), "panel": ""},
     )
 
 
@@ -187,7 +195,9 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
         "image_path": details.get("image_path", ""),
     }
     return templates.TemplateResponse(
-        request, "partials/lookup_results.html", {"item": item, "matches": [match], "kind": "bgg"}
+        request,
+        "partials/lookup_results.html",
+        {"item": item, "matches": [match], "kind": "bgg", "target_id": _target_id(item_id, ""), "panel": ""},
     )
 
 
@@ -197,7 +207,9 @@ def lookup_web_images(request: Request, item_id: str, q: str, repo: Repository =
     urls = search_multiple_web_images(q, num_results=8)
     matches = [{"image_path": url} for url in urls]
     return templates.TemplateResponse(
-        request, "partials/lookup_results.html", {"item": item, "matches": matches, "kind": "image"}
+        request,
+        "partials/lookup_results.html",
+        {"item": item, "matches": matches, "kind": "image", "target_id": _target_id(item_id, ""), "panel": ""},
     )
 
 
@@ -217,4 +229,37 @@ async def apply_metadata(request: Request, item_id: str, repo: Repository = Depe
         updates["image_path"] = str(form["image_path"]).strip()
 
     item = repo.update_item(item_id, **updates)
+
+    if str(form.get("panel", "")) == "missing":
+        response = HTMLResponse("")
+        response.headers["HX-Trigger"] = "refreshList, refreshMissingMeta"
+        return response
+
     return templates.TemplateResponse(request, "partials/item_row.html", {"item": item})
+
+
+def _movies_missing_metadata(repo: Repository) -> list[Item]:
+    def is_missing(item: Item) -> bool:
+        rating = item.attributes.get("Rating", "").strip()
+        return not item.image_path or not rating
+
+    return [i for i in repo.list_items(category_slug="movies") if is_missing(i)]
+
+
+@router.get("/categories/{slug}/missing-metadata", response_class=HTMLResponse)
+def missing_metadata_banner(request: Request, slug: str, repo: Repository = Depends(get_repository)):
+    if slug != "movies":
+        return HTMLResponse("")
+    count = len(_movies_missing_metadata(repo))
+    return templates.TemplateResponse(
+        request, "partials/missing_metadata_banner.html", {"count": count, "category_slug": slug}
+    )
+
+
+@router.get("/categories/{slug}/missing-metadata/panel", response_class=HTMLResponse)
+def missing_metadata_panel(request: Request, slug: str, repo: Repository = Depends(get_repository)):
+    if slug != "movies":
+        return HTMLResponse("")
+    return templates.TemplateResponse(
+        request, "partials/missing_metadata_panel.html", {"items": _movies_missing_metadata(repo)}
+    )

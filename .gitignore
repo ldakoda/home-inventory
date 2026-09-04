@@ -1,5 +1,6 @@
 .env
 secrets/
+.claude/settings.local.json
 *.json.key
 __pycache__/
 *.pyc
