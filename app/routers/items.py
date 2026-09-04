@@ -1,5 +1,6 @@
 import difflib
 import re
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
@@ -67,6 +68,28 @@ def _clean_movie_query(raw: str) -> str:
             break
         q = stripped
     return q or raw.strip()
+
+
+_MEDIA_RETAILER_DOMAINS = (
+    # retailers
+    "ebayimg.com", "ebay.com",
+    "media-amazon.com", "amazon.com",
+    "bbystatic.com", "bestbuy.com",
+    "walmartimages.com", "walmart.com",
+    "target.scene7.com", "target.com",
+    "dvdempire.com", "moviestop.com", "barnesandnoble.com",
+    # dedicated DVD/Blu-ray cover art archives -- often a better source than a
+    # retailer listing photo for a specific/niche combo release
+    "static-bluray.com", "bluray.com",
+    "dvdcover.com", "dvd-covers.org", "box3.net",
+    "hirescovers.net", "freecovers.net", "coverlib.com",
+    "fanart.tv",
+)
+
+
+def _is_media_retailer(url: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    return any(host == d or host.endswith("." + d) for d in _MEDIA_RETAILER_DOMAINS)
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -213,8 +236,15 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
         # or franchise entry for "movie A + movie B on one disc". Search the actual web
         # for that specific product's box art and offer it alongside any single-movie
         # matches above, since either could be the right image to use.
+        #
+        # The underlying search (scraped, not an official API) returns plenty of
+        # unrelated junk for an ambiguous multi-word title -- a plain video thumbnail,
+        # a stock photo, once literally a grammar lesson. Only keep hits from domains
+        # that are actually movie/media retailers, and over-fetch since most
+        # candidates get discarded by that filter.
         existing_images = {m.get("image_path") for m in matches}
-        box_art = search_multiple_web_images(f"{q} DVD cover", num_results=6)
+        raw_box_art = search_multiple_web_images(f"{q} DVD cover", num_results=24)
+        box_art = [url for url in raw_box_art if _is_media_retailer(url)][:6]
         matches = matches + [{"image_path": url} for url in box_art if url not in existing_images]
         if box_art:
             notes.append("This looks like a multi-movie combo pack -- web results for the actual box art are included too (poster only, no other metadata).")
