@@ -55,6 +55,34 @@ class LocalImageStorage(ImageStorage):
             pass
 
 
+class GCSImageStorage(ImageStorage):
+    """Images live in a Cloud Storage bucket with uniform (public-read) access
+    configured at the bucket level, so uploaded files are reachable at a plain
+    https://storage.googleapis.com/<bucket>/<name> URL.
+    """
+
+    def __init__(self, bucket_name: str):
+        from google.cloud import storage as gcs
+
+        self.client = gcs.Client()
+        self.bucket = self.client.bucket(bucket_name)
+
+    def save(self, upload: UploadFile) -> str:
+        filename = safe_filename(upload.filename or "upload")
+        blob = self.bucket.blob(filename)
+        blob.upload_from_file(upload.file, content_type=upload.content_type)
+        return blob.public_url
+
+    def delete(self, image_path: str) -> None:
+        filename = image_path.rsplit("/", 1)[-1]
+        try:
+            self.bucket.blob(filename).delete()
+        except Exception:
+            pass
+
+
 def get_image_storage() -> ImageStorage:
     settings = get_settings()
+    if settings.storage_backend == "gcs":
+        return GCSImageStorage(settings.gcs_bucket_name)
     return LocalImageStorage(settings.image_dir)

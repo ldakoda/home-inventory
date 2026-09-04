@@ -1,22 +1,12 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from functools import lru_cache
+
+from google.cloud import firestore
 
 from app.config import get_settings
 
-settings = get_settings()
 
-connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
-engine = create_engine(settings.database_url, connect_args=connect_args)
-SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+@lru_cache
+def get_firestore_client() -> firestore.Client:
+    settings = get_settings()
+    kwargs = {"project": settings.gcp_project} if settings.gcp_project else {}
+    return firestore.Client(**kwargs)

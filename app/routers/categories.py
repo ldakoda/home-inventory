@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy.orm import Session
 
-from app.db import get_db
 from app.deps import require_auth
 from app.models import Category
+from app.repository import Repository, get_repository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 templates = Jinja2Templates(directory="app/templates")
@@ -27,7 +26,7 @@ def create_category(
     icon: str = Form("📦"),
     primary_field: str = Form(""),
     raw_fields: str = Form(""),
-    db: Session = Depends(get_db),
+    repo: Repository = Depends(get_repository),
 ):
     name = name.strip()
     primary_field = primary_field.strip()
@@ -44,7 +43,7 @@ def create_category(
         fields.insert(0, primary_field)
 
     slug = slugify(name)
-    if db.query(Category).filter(Category.slug == slug).first():
+    if repo.get_category(slug) is not None:
         return templates.TemplateResponse(
             request,
             "partials/category_form.html",
@@ -52,11 +51,9 @@ def create_category(
             status_code=400,
         )
 
-    category = Category(slug=slug, name=name, icon=icon, primary_field=primary_field, fields=fields)
-    db.add(category)
-    db.commit()
+    repo.create_category(Category(slug=slug, name=name, icon=icon, primary_field=primary_field, fields=fields))
 
-    categories = db.query(Category).order_by(Category.name).all()
+    categories = repo.list_categories()
     return templates.TemplateResponse(
         request,
         "partials/category_tabs.html",

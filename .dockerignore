@@ -2,8 +2,11 @@
 __pycache__/
 *.pyc
 .env
+secrets/
 data/
 uploaded_images/
 legacy_streamlit_app/
+scripts/
 *.csv
+*.db
 .git/

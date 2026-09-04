@@ -6,12 +6,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app/ app/
-COPY scripts/ scripts/
 
-RUN mkdir -p /data /data/uploaded_images
+ENV STORAGE_BACKEND=gcs
+# Cloud Run injects its own service account automatically -- no key file needed in the image.
 
-ENV DATABASE_URL=sqlite:////data/inventory.db
-ENV IMAGE_DIR=/data/uploaded_images
-
-EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8080
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

@@ -3,7 +3,8 @@ uvicorn[standard]
 python-dotenv
 jinja2
 python-multipart
-sqlalchemy
+google-cloud-firestore
+google-cloud-storage
 bcrypt
 itsdangerous
 requests
