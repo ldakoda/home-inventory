@@ -189,11 +189,12 @@ def _target_id(item_id: str, panel: str) -> str:
 def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
     cleaned_q = _clean_movie_query(q)
+    looks_like_bundle = cleaned_q != q.strip()
 
     matches = fetch_omdb_movie_matches(q)
-    if not matches and cleaned_q != q:
+    if not matches and looks_like_bundle:
         matches = fetch_omdb_movie_matches(cleaned_q)
-    note = None
+    notes = []
 
     if not matches:
         # OMDb only indexes individual titles -- a box-set/collection name (or any title
@@ -203,12 +204,25 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
         # since the literal retail packaging text rarely matches either database directly.
         matches = search_tmdb(cleaned_q)
         if matches:
-            note = "No OMDb match (common for box-set/collection titles) -- showing TMDb results for '" + cleaned_q + "' instead. Collection hits only set the poster/title, not rating or genre."
+            notes.append(f"No OMDb match -- showing TMDb results for '{cleaned_q}' instead (poster/title only, no rating or genre).")
+
+    if looks_like_bundle:
+        # A "Double Feature"/"Collection"/slash-separated combo (often a store-exclusive
+        # 2-in-1 disc, e.g. a Walmart double feature) is its own retail product, not
+        # something OMDb or TMDb indexes at all -- neither has a matching single title
+        # or franchise entry for "movie A + movie B on one disc". Search the actual web
+        # for that specific product's box art and offer it alongside any single-movie
+        # matches above, since either could be the right image to use.
+        existing_images = {m.get("image_path") for m in matches}
+        box_art = search_multiple_web_images(f"{q} DVD cover", num_results=6)
+        matches = matches + [{"image_path": url} for url in box_art if url not in existing_images]
+        if box_art:
+            notes.append("This looks like a multi-movie combo pack -- web results for the actual box art are included too (poster only, no other metadata).")
 
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {"item": item, "matches": matches, "kind": "omdb", "target_id": _target_id(item_id, panel), "panel": panel, "note": note},
+        {"item": item, "matches": matches, "kind": "omdb", "target_id": _target_id(item_id, panel), "panel": panel, "note": " ".join(notes) or None},
     )
 
 

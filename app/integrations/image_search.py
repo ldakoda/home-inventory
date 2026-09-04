@@ -3,7 +3,7 @@ import re
 import urllib.parse
 
 import requests
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 
 logger = logging.getLogger(__name__)
 

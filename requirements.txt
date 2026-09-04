@@ -8,5 +8,5 @@ google-cloud-storage
 bcrypt
 itsdangerous
 requests
-duckduckgo-search
+ddgs
 pandas
