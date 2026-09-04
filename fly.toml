@@ -1,24 +1,30 @@
-app = "home-inventory-ldakoda"
-primary_region = "sea"
+# fly.toml app configuration file generated for home-inventory-r4-eiw on 2026-09-04T00:41:04Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'home-inventory-r4-eiw'
+primary_region = 'lax'
 
 [build]
 
 [env]
-  DATABASE_URL = "sqlite:////data/inventory.db"
-  IMAGE_DIR = "/data/uploaded_images"
+  DATABASE_URL = 'sqlite:////data/inventory.db'
+  IMAGE_DIR = '/data/uploaded_images'
 
-[mounts]
-  source = "home_inventory_data"
-  destination = "/data"
+[[mounts]]
+  source = 'home_inventory_data'
+  destination = '/data'
 
 [http_service]
   internal_port = 8000
   force_https = true
-  auto_stop_machines = "stop"
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
 [[vm]]
-  memory = "256mb"
-  cpu_kind = "shared"
+  memory = '256mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 256
