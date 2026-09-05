@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 import urllib.parse
 import xml.etree.ElementTree as ET
@@ -14,6 +15,14 @@ _HEADERS_BASE = {
     "Accept": "text/xml,application/xml",
 }
 
+# BGG rate-limits per API token and returns 429 once several requests land
+# close together (observed even with ~1s client-side spacing under bulk
+# scans). Serialize all outbound calls with a minimum gap between them, and
+# retry with backoff on 429 as a safety net for whatever slips through.
+_MIN_REQUEST_GAP_SECONDS = 1.2
+_rate_lock = threading.Lock()
+_last_request_at = 0.0
+
 
 def _headers() -> dict:
     settings = get_settings()
@@ -21,6 +30,28 @@ def _headers() -> dict:
     if settings.bgg_api_token:
         headers["Authorization"] = f"Bearer {settings.bgg_api_token}"
     return headers
+
+
+def _throttled_get(url: str, headers: dict, timeout: int, max_retries: int = 4) -> requests.Response:
+    global _last_request_at
+
+    for attempt in range(max_retries):
+        with _rate_lock:
+            wait = _MIN_REQUEST_GAP_SECONDS - (time.time() - _last_request_at)
+            if wait > 0:
+                time.sleep(wait)
+            res = requests.get(url, headers=headers, timeout=timeout)
+            _last_request_at = time.time()
+
+        if res.status_code == 429:
+            retry_after = res.headers.get("Retry-After")
+            delay = float(retry_after) if retry_after else 1.5 * (attempt + 1)
+            time.sleep(delay)
+            continue
+
+        return res
+
+    return res
 
 
 def fetch_bgg_game_matches(game_title: str) -> list[dict]:
@@ -34,7 +65,7 @@ def fetch_bgg_game_matches(game_title: str) -> list[dict]:
 
     try:
         exact_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame&exact=1"
-        res_exact = requests.get(exact_url, headers=headers, timeout=8)
+        res_exact = _throttled_get(exact_url, headers, timeout=8)
         if res_exact.status_code == 200:
             root = ET.fromstring(res_exact.content)
             for item in root.findall("item"):
@@ -42,7 +73,7 @@ def fetch_bgg_game_matches(game_title: str) -> list[dict]:
 
         if len(items) < 8:
             search_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
-            res_broad = requests.get(search_url, headers=headers, timeout=8)
+            res_broad = _throttled_get(search_url, headers, timeout=8)
             if res_broad.status_code == 200:
                 root = ET.fromstring(res_broad.content)
                 existing_ids = {i["id"] for i in items}
@@ -79,7 +110,7 @@ def fetch_bgg_game_details(bgg_id: str, max_retries: int = 3) -> dict:
 
     for attempt in range(max_retries):
         try:
-            res = requests.get(url, headers=headers, timeout=8)
+            res = _throttled_get(url, headers, timeout=8)
             if res.status_code == 202:
                 time.sleep(2 * (attempt + 1))
                 continue

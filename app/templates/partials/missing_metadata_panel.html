@@ -15,7 +15,7 @@
     </div>
     <div id="missing-meta-candidates-{{ item.id }}"
       hx-get="/items/{{ item.id }}/lookup/{{ lookup_path }}?q={{ item.name | urlencode }}&panel=missing"
-      hx-trigger="load" hx-swap="innerHTML">
+      hx-trigger="load delay:{{ loop.index0 * 400 }}ms" hx-swap="innerHTML">
       <p class="empty">Searching…</p>
     </div>
   </div>
