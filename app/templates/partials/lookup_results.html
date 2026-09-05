@@ -5,7 +5,11 @@
 <div class="lookup-grid">
   {% for m in matches %}
   <div class="lookup-card">
-    {% if m.image_path %}<img src="{{ m.image_path }}" alt="">{% endif %}
+    {% if m.image_path %}
+    <img src="{{ m.image_path }}" alt="">
+    {% elif kind == "bgg" and m.get("id") %}
+    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id }}/lookup/bgg-thumb?bgg_id={{ m.id }}" hx-trigger="click" hx-swap="innerHTML" title="Click to load image">🖼️</div>
+    {% endif %}
     {% if m.Title %}<div class="lookup-title">{{ m.Title }}{% if m.get("Year Released") %} ({{ m["Year Released"] }}){% endif %}</div>{% endif %}
 
     {% if kind == "bgg" and m.get("id") %}

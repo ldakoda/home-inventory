@@ -263,11 +263,36 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     matches = []
     for m in raw_matches[:8]:
         matches.append({"id": m["id"], "Title": m["name"], "Year Released": m.get("year", "")})
+
+    # BGG's search endpoint returns no image, only the separate "thing" endpoint does.
+    # Fetch it for just the top (most likely) match and embed it directly in this same
+    # response -- an htmx auto-trigger nested inside another auto-triggered swap (as
+    # this row's own candidates already are, inside the missing-metadata panel) turned
+    # out to fire unreliably for most of ~60 simultaneous rows, so this avoids a second
+    # client-side round trip entirely rather than chasing that down further. The
+    # remaining candidates stay image-less until clicked (lookup_results.html's
+    # click-to-load thumb), since fetching all 8 up front would multiply BGG API calls.
+    if matches:
+        top_details = fetch_bgg_game_details(matches[0]["id"])
+        if top_details.get("image_path"):
+            matches[0]["image_path"] = top_details["image_path"]
+
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
         {"item": item, "matches": matches, "kind": "bgg", "panel": panel, "target_id": _target_id(item_id, panel)},
     )
+
+
+@router.get("/items/{item_id}/lookup/bgg-thumb", response_class=HTMLResponse)
+def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, repo: Repository = Depends(get_repository)):
+    # BGG's search endpoint (used above) returns no image at all, only the "thing"
+    # endpoint does -- so each search result lazy-loads its own thumbnail via this
+    # endpoint after the results render, rather than fetching full details for every
+    # candidate up front (which would be several BGG API round-trips per game).
+    _get_item_or_404(repo, item_id)
+    details = fetch_bgg_game_details(bgg_id)
+    return templates.TemplateResponse(request, "partials/bgg_thumb.html", {"image_path": details.get("image_path", "")})
 
 
 @router.get("/items/{item_id}/lookup/bgg-details", response_class=HTMLResponse)
