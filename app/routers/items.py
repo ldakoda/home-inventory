@@ -265,19 +265,16 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
         matches.append({"id": m["id"], "Title": m["name"], "Year Released": m.get("year", "")})
 
     # BGG's search endpoint returns no image, only the separate "thing" endpoint does.
-    # For a single deliberate search (the edit drawer's own search box), fetch it for
-    # just the top match and embed it directly in this response -- an htmx auto-trigger
-    # nested inside another auto-triggered swap turned out to fire unreliably, so this
-    # avoids a second client-side round trip rather than chasing that down further.
-    #
-    # Skip this during the missing-metadata panel's bulk scan (panel == "missing"):
-    # that already fires up to ~60 of these searches at once (staggered, but still a
-    # sustained burst), and doubling every row's BGG calls with an extra detail fetch
-    # pushed enough of them into what looks like BGG-side rate limiting that most rows
-    # came back with zero matches even though the same query succeeds in isolation.
-    # The remaining/all candidates stay image-less until clicked either way (see
-    # lookup_results.html's click-to-load thumb).
-    if matches and panel != "missing":
+    # Fetch it for just the top (most likely) match and embed it directly in this same
+    # response -- an htmx auto-trigger nested inside another auto-triggered swap (as
+    # this row's own candidates already are, inside the missing-metadata panel) turned
+    # out to fire unreliably, so this avoids a second client-side round trip entirely.
+    # bgg.py serializes and retries these calls, so the missing-metadata panel's bulk
+    # scan (up to ~60 of these at once) no longer needs to skip this to avoid BGG-side
+    # rate limiting. The remaining candidates stay image-less until clicked (see
+    # lookup_results.html's click-to-load thumb), since fetching all 8 up front would
+    # multiply BGG API calls for no benefit.
+    if matches:
         top_details = fetch_bgg_game_details(matches[0]["id"])
         if top_details.get("image_path"):
             matches[0]["image_path"] = top_details["image_path"]
