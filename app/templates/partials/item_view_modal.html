@@ -1,0 +1,21 @@
+<div class="modal-backdrop" onclick="if (event.target === this) this.remove()">
+  <div class="modal-card">
+    <button type="button" class="modal-close" onclick="document.getElementById('modal-slot').innerHTML=''">✖</button>
+    {% if item.image_path %}<img src="{{ item.image_path }}" class="modal-cover" alt="">{% endif %}
+    <h3>{{ item.name }}</h3>
+    <p class="lookup-label">{{ item.category.icon }} {{ item.category.name }}</p>
+    <ul class="modal-details">
+      {% for field in item.category.fields %}
+      {% if field != item.category.primary_field and item.attributes.get(field) %}
+      <li><strong>{{ field }}:</strong> {{ item.attributes[field] }}</li>
+      {% endif %}
+      {% endfor %}
+    </ul>
+    <div class="modal-actions">
+      <button type="button" class="btn-primary"
+        hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML"
+        hx-on::after-request="document.getElementById('modal-slot').innerHTML=''">✏️ Edit</button>
+      <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Close</button>
+    </div>
+  </div>
+</div>

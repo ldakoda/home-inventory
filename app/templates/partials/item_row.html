@@ -1,12 +1,12 @@
 <div id="item-{{ item.id }}" class="item-row">
-  <div class="item-thumb">
+  <div class="item-thumb item-clickable" hx-get="/items/{{ item.id }}/view" hx-target="#modal-slot" hx-swap="innerHTML">
     {% if item.image_path %}
     <img src="{{ item.image_path }}" loading="lazy" alt="">
     {% else %}
     <span class="emoji">{{ item.category.icon }}</span>
     {% endif %}
   </div>
-  <div class="item-main">
+  <div class="item-main item-clickable" hx-get="/items/{{ item.id }}/view" hx-target="#modal-slot" hx-swap="innerHTML">
     <div class="item-name">{{ item.name }}</div>
     <div class="item-meta">{{ item.category.icon }} {{ item.category.name }}</div>
   </div>

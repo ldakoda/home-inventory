@@ -164,6 +164,12 @@ async def create_item(
     return response
 
 
+@router.get("/items/{item_id}/view", response_class=HTMLResponse)
+def view_item(request: Request, item_id: str, repo: Repository = Depends(get_repository)):
+    item = _get_item_or_404(repo, item_id)
+    return templates.TemplateResponse(request, "partials/item_view_modal.html", {"item": item})
+
+
 @router.get("/items/{item_id}/edit", response_class=HTMLResponse)
 def edit_item_form(request: Request, item_id: str, repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
