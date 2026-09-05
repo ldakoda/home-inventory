@@ -208,15 +208,6 @@ def _target_id(item_id: str, panel: str) -> str:
     return f"missing-meta-item-{item_id}" if panel == "missing" else f"item-{item_id}"
 
 
-def _results_target_id(item_id: str, panel: str) -> str:
-    """Where a multi-step lookup (BGG's search -> select -> details) re-renders its
-    own results in place. Differs from _target_id, which is where the *final*
-    accepted match gets swapped in -- the edit drawer and the missing-metadata panel
-    use different container ids for the in-progress results.
-    """
-    return f"missing-meta-candidates-{item_id}" if panel == "missing" else f"lookup-results-{item_id}"
-
-
 @router.get("/items/{item_id}/lookup/omdb", response_class=HTMLResponse)
 def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
@@ -275,15 +266,16 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {
-            "item": item, "matches": matches, "kind": "bgg", "panel": panel,
-            "target_id": _target_id(item_id, panel), "results_target_id": _results_target_id(item_id, panel),
-        },
+        {"item": item, "matches": matches, "kind": "bgg", "panel": panel, "target_id": _target_id(item_id, panel)},
     )
 
 
 @router.get("/items/{item_id}/lookup/bgg-details", response_class=HTMLResponse)
 def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, panel: str = "", repo: Repository = Depends(get_repository)):
+    # Rendered into the global #modal-slot (see base.html) rather than swapped inline --
+    # a modal always has the same home regardless of whether this was opened from the
+    # edit drawer or the missing-metadata panel, so it sidesteps needing to track a
+    # different "in-progress results" container id per context.
     item = _get_item_or_404(repo, item_id)
     details = fetch_bgg_game_details(bgg_id)
     match = {
@@ -295,11 +287,8 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
     }
     return templates.TemplateResponse(
         request,
-        "partials/lookup_results.html",
-        {
-            "item": item, "matches": [match], "kind": "bgg", "panel": panel,
-            "target_id": _target_id(item_id, panel), "results_target_id": _results_target_id(item_id, panel),
-        },
+        "partials/bgg_confirm_modal.html",
+        {"item": item, "match": match, "panel": panel, "target_id": _target_id(item_id, panel)},
     )
 
 

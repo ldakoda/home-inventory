@@ -1,0 +1,25 @@
+<div class="modal-backdrop" onclick="if (event.target === this) this.remove()">
+  <div class="modal-card">
+    <button type="button" class="modal-close" onclick="document.getElementById('modal-slot').innerHTML=''">✖</button>
+    {% if match.image_path %}<img src="{{ match.image_path }}" class="modal-cover" alt="">{% endif %}
+    <h3>{{ match.Title }}</h3>
+    <ul class="modal-details">
+      {% if match.get("Number of Players") %}<li><strong>Players:</strong> {{ match["Number of Players"] }}</li>{% endif %}
+      {% if match.get("Length of Play") %}<li><strong>Length:</strong> {{ match["Length of Play"] }}</li>{% endif %}
+      {% if match.get("Age Rating") %}<li><strong>Age:</strong> {{ match["Age Rating"] }}</li>{% endif %}
+    </ul>
+    <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#{{ target_id }}" hx-swap="outerHTML"
+          hx-on::after-request="document.getElementById('modal-slot').innerHTML=''">
+      {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
+      <input type="hidden" name="Title" value="{{ match.Title }}">
+      {% if match.get("Number of Players") %}<input type="hidden" name="Number of Players" value="{{ match['Number of Players'] }}">{% endif %}
+      {% if match.get("Length of Play") %}<input type="hidden" name="Length of Play" value="{{ match['Length of Play'] }}">{% endif %}
+      {% if match.get("Age Rating") %}<input type="hidden" name="Age Rating" value="{{ match['Age Rating'] }}">{% endif %}
+      {% if match.image_path %}<input type="hidden" name="image_path" value="{{ match.image_path }}">{% endif %}
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">✅ Apply</button>
+        <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
