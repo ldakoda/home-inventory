@@ -237,11 +237,11 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
         # for that specific product's box art and offer it alongside any single-movie
         # matches above, since either could be the right image to use.
         #
-        # The underlying search (scraped, not an official API) returns plenty of
-        # unrelated junk for an ambiguous multi-word title -- a plain video thumbnail,
-        # a stock photo, once literally a grammar lesson. Only keep hits from domains
-        # that are actually movie/media retailers, and over-fetch since most
-        # candidates get discarded by that filter.
+        # This is a scraped search, not an official API (Google's Custom Search JSON
+        # API and eBay's Browse API were both tried and are unavailable to new
+        # projects/accounts) -- it returns plenty of unrelated junk for an ambiguous
+        # multi-word title, so only keep hits from domains that are actually
+        # movie/media retailers, and over-fetch since most candidates get discarded.
         existing_images = {m.get("image_path") for m in matches}
         raw_box_art = search_multiple_web_images(f"{q} DVD cover", num_results=24)
         box_art = [url for url in raw_box_art if _is_media_retailer(url)][:6]
