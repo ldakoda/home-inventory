@@ -28,7 +28,12 @@
         onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/omdb?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
         🔍 Search OMDb
       </button>
+      <button type="button" class="btn-plain"
+        onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
+        🖼️ Browse Google Images
+      </button>
     </div>
+    <p class="lookup-hint">No automated search reliably covers store-exclusive combo packs -- "Browse Google Images" opens a real search in a new tab; copy an image's address and paste it into Photo URL above.</p>
     {% elif item.category.slug == "games" %}
     <p class="lookup-label">🎲 Search BoardGameGeek for details &amp; box art:</p>
     <div class="lookup-search-row">
@@ -36,6 +41,10 @@
       <button type="button" class="btn-plain"
         onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
         🔍 Search BGG
+      </button>
+      <button type="button" class="btn-plain"
+        onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
+        🖼️ Browse Google Images
       </button>
     </div>
     {% else %}
@@ -45,6 +54,10 @@
       <button type="button" class="btn-plain"
         onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/web-images?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
         🔍 Search Web Photos
+      </button>
+      <button type="button" class="btn-plain"
+        onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
+        🖼️ Browse Google Images
       </button>
     </div>
     {% endif %}

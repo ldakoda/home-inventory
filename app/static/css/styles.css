@@ -123,8 +123,9 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 }
 .lookup-panel { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
 .lookup-label { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 6px; }
-.lookup-search-row { display: flex; gap: 8px; align-items: flex-start; }
-.lookup-search-row input { flex: 1; }
+.lookup-search-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }
+.lookup-search-row input { flex: 1; min-width: 120px; }
+.lookup-hint { font-size: 0.78rem; color: var(--text-muted); margin: 6px 0 0; }
 .lookup-note { font-size: 0.8rem; color: var(--warning); background: var(--warning-bg); border-radius: var(--radius); padding: 6px 10px; margin: 8px 0 0; }
 .lookup-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
 .lookup-card {
