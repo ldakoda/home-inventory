@@ -208,6 +208,15 @@ def _target_id(item_id: str, panel: str) -> str:
     return f"missing-meta-item-{item_id}" if panel == "missing" else f"item-{item_id}"
 
 
+def _results_target_id(item_id: str, panel: str) -> str:
+    """Where a multi-step lookup (BGG's search -> select -> details) re-renders its
+    own results in place. Differs from _target_id, which is where the *final*
+    accepted match gets swapped in -- the edit drawer and the missing-metadata panel
+    use different container ids for the in-progress results.
+    """
+    return f"missing-meta-candidates-{item_id}" if panel == "missing" else f"lookup-results-{item_id}"
+
+
 @router.get("/items/{item_id}/lookup/omdb", response_class=HTMLResponse)
 def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
@@ -257,7 +266,7 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
 
 
 @router.get("/items/{item_id}/lookup/bgg", response_class=HTMLResponse)
-def lookup_bgg(request: Request, item_id: str, q: str, repo: Repository = Depends(get_repository)):
+def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
     raw_matches = fetch_bgg_game_matches(q)
     matches = []
@@ -266,12 +275,15 @@ def lookup_bgg(request: Request, item_id: str, q: str, repo: Repository = Depend
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {"item": item, "matches": matches, "kind": "bgg", "target_id": _target_id(item_id, ""), "panel": ""},
+        {
+            "item": item, "matches": matches, "kind": "bgg", "panel": panel,
+            "target_id": _target_id(item_id, panel), "results_target_id": _results_target_id(item_id, panel),
+        },
     )
 
 
 @router.get("/items/{item_id}/lookup/bgg-details", response_class=HTMLResponse)
-def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, repo: Repository = Depends(get_repository)):
+def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _get_item_or_404(repo, item_id)
     details = fetch_bgg_game_details(bgg_id)
     match = {
@@ -284,7 +296,10 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {"item": item, "matches": [match], "kind": "bgg", "target_id": _target_id(item_id, ""), "panel": ""},
+        {
+            "item": item, "matches": [match], "kind": "bgg", "panel": panel,
+            "target_id": _target_id(item_id, panel), "results_target_id": _results_target_id(item_id, panel),
+        },
     )
 
 
@@ -325,19 +340,34 @@ async def apply_metadata(request: Request, item_id: str, repo: Repository = Depe
     return templates.TemplateResponse(request, "partials/item_row.html", {"item": item})
 
 
-def _movies_missing_metadata(repo: Repository) -> list[Item]:
-    def is_missing(item: Item) -> bool:
-        rating = item.attributes.get("Rating", "").strip()
-        return not item.image_path or not rating
+# Categories with an automated metadata lookup get a "missing metadata" banner.
+# key_field is the attribute that (along with a missing image) marks an item as
+# incomplete; lookup_path picks which /items/{id}/lookup/... endpoint the panel's
+# per-row auto-search hits.
+_MISSING_METADATA_CONFIG = {
+    "movies": {"key_field": "Rating", "lookup_path": "omdb"},
+    "games": {"key_field": "Number of Players", "lookup_path": "bgg"},
+}
 
-    return [i for i in repo.list_items(category_slug="movies") if is_missing(i)]
+
+def _items_missing_metadata(repo: Repository, slug: str) -> list[Item]:
+    config = _MISSING_METADATA_CONFIG.get(slug)
+    if config is None:
+        return []
+
+    key_field = config["key_field"]
+
+    def is_missing(item: Item) -> bool:
+        return not item.image_path or not item.attributes.get(key_field, "").strip()
+
+    return [i for i in repo.list_items(category_slug=slug) if is_missing(i)]
 
 
 @router.get("/categories/{slug}/missing-metadata", response_class=HTMLResponse)
 def missing_metadata_banner(request: Request, slug: str, repo: Repository = Depends(get_repository)):
-    if slug != "movies":
+    if slug not in _MISSING_METADATA_CONFIG:
         return HTMLResponse("")
-    count = len(_movies_missing_metadata(repo))
+    count = len(_items_missing_metadata(repo, slug))
     return templates.TemplateResponse(
         request, "partials/missing_metadata_banner.html", {"count": count, "category_slug": slug}
     )
@@ -345,8 +375,12 @@ def missing_metadata_banner(request: Request, slug: str, repo: Repository = Depe
 
 @router.get("/categories/{slug}/missing-metadata/panel", response_class=HTMLResponse)
 def missing_metadata_panel(request: Request, slug: str, repo: Repository = Depends(get_repository)):
-    if slug != "movies":
+    config = _MISSING_METADATA_CONFIG.get(slug)
+    if config is None:
         return HTMLResponse("")
+    category = repo.get_category(slug)
     return templates.TemplateResponse(
-        request, "partials/missing_metadata_panel.html", {"items": _movies_missing_metadata(repo)}
+        request,
+        "partials/missing_metadata_panel.html",
+        {"items": _items_missing_metadata(repo, slug), "category": category, "lookup_path": config["lookup_path"]},
     )

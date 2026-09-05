@@ -10,7 +10,7 @@
 
     {% if kind == "bgg" and m.get("id") %}
     <button type="button" class="btn-primary"
-      onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent('{{ m.Title|e }}'), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+      onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent('{{ m.Title|e }}') + '{{ ('&panel=' + panel) if panel else '' }}', {target: '#{{ results_target_id }}', swap: 'innerHTML'})">
       Select
     </button>
     {% else %}

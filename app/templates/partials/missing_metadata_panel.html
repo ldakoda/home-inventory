@@ -1,11 +1,11 @@
 <div class="panel missing-meta-panel">
   <div class="missing-meta-panel-header">
-    <h4>🛠️ Movies Missing Metadata</h4>
+    <h4>🛠️ {{ category.name }} Missing Metadata</h4>
     <button type="button" class="btn-plain" onclick="document.getElementById('missing-metadata-panel-slot').innerHTML=''">✖ Close</button>
   </div>
 
   {% if not items %}
-  <p class="empty">🎉 All movies have complete metadata!</p>
+  <p class="empty">🎉 All {{ category.name }} items have complete metadata!</p>
   {% else %}
   {% for item in items %}
   <div id="missing-meta-item-{{ item.id }}" class="missing-meta-row">
@@ -14,9 +14,9 @@
       <button type="button" class="btn-plain" hx-get="/items/{{ item.id }}/edit" hx-target="#missing-meta-item-{{ item.id }}" hx-swap="outerHTML">✏️ Edit Manually</button>
     </div>
     <div id="missing-meta-candidates-{{ item.id }}"
-      hx-get="/items/{{ item.id }}/lookup/omdb?q={{ item.name | urlencode }}&panel=missing"
+      hx-get="/items/{{ item.id }}/lookup/{{ lookup_path }}?q={{ item.name | urlencode }}&panel=missing"
       hx-trigger="load" hx-swap="innerHTML">
-      <p class="empty">Searching OMDb…</p>
+      <p class="empty">Searching…</p>
     </div>
   </div>
   {% endfor %}
