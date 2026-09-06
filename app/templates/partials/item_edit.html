@@ -29,7 +29,7 @@
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
       <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/omdb?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/omdb?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search OMDb
       </button>
       <button type="button" class="btn-plain"
@@ -43,7 +43,7 @@
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
       <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search BGG
       </button>
       <button type="button" class="btn-plain"
@@ -56,7 +56,7 @@
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
       <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/web-images?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'})">
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/web-images?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search Web Photos
       </button>
       <button type="button" class="btn-plain"

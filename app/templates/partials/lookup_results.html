@@ -14,7 +14,7 @@
     {% if m.Title %}<div class="lookup-title">{{ m.Title }}{% if m.get("Year Released") %} ({{ m["Year Released"] }}){% endif %}</div>{% endif %}
 
     {% if kind == "bgg" and m.get("id") %}
-    <button type="button" class="btn-primary" data-title="{{ m.Title }}"
+    <button type="button" class="btn-primary" data-title="{{ m.Title }}" data-match="{{ m.match_json }}"
       onclick="htmx.ajax('GET', '/items/{{ item.id if item else 'new' }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent(this.dataset.title) + '{{ ('&panel=' + panel) if panel else '' }}', {target: '#modal-slot', swap: 'innerHTML'})">
       Select
     </button>

@@ -316,8 +316,15 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     # click-to-load thumb).
     if matches and not is_bulk_scan:
         top_details = fetch_bgg_game_details(matches[0]["id"], priority=priority)
-        if top_details.get("image_path"):
-            matches[0]["image_path"] = top_details["image_path"]
+        for key in ("image_path", "Number of Players", "Length of Play", "Age Rating", "Description"):
+            if top_details.get(key):
+                matches[0][key] = top_details[key]
+
+    # Powers the edit drawer's "auto-fill empty fields from the top result" (see
+    # autoFillFromSearch in index.html) the same way OMDb/TMDb/web-image matches
+    # already do -- harmless for the bulk scan, which never reads this key.
+    for m in matches:
+        m["match_json"] = _match_json(m)
 
     return templates.TemplateResponse(
         request,

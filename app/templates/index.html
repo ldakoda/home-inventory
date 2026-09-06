@@ -268,6 +268,74 @@ function fillAddForm(el) {
   fillAddFormFromData(JSON.parse(el.dataset.match));
 }
 
+// Edit drawer: after a search, fill in whatever fields are still blank using
+// the best available result -- never overwrites a value that's already there
+// -- and mark each one it touched with a ✨ next to its label so it's obvious
+// which values came from search versus what was already on the item. The
+// mark clears the moment the field is edited by hand.
+// "Type" is deliberately excluded from counting as real metadata on its own --
+// a bare TMDb "Collection" hit (title + poster + Type, nothing else) would
+// otherwise look just as good as an actual movie with a real Rating/Genre/etc.
+const AUTO_FILL_IGNORED_KEYS = new Set(["Title", "image_path", "match_json", "id", "Type"]);
+
+function autoFillFromSearch(itemId) {
+  const results = document.getElementById('lookup-results-' + itemId);
+  const form = document.getElementById('item-' + itemId);
+  if (!results || !form) return;
+
+  // The literal first candidate is sometimes a bare title+poster hit (e.g. a
+  // TMDb "Collection" entry, which precedes real movie matches) with nothing
+  // else to offer -- prefer the first one that actually carries real fields.
+  const candidates = Array.from(results.querySelectorAll('.lookup-card [data-match]'));
+  let data = null;
+  for (const btn of candidates) {
+    let parsed;
+    try {
+      parsed = JSON.parse(btn.dataset.match);
+    } catch (e) {
+      continue;
+    }
+    const hasRealMetadata = Object.keys(parsed).some(k => !AUTO_FILL_IGNORED_KEYS.has(k) && parsed[k]);
+    if (hasRealMetadata) {
+      data = parsed;
+      break;
+    }
+    if (!data) data = parsed;
+  }
+  if (!data) return;
+
+  Object.entries(data).forEach(([key, value]) => {
+    if (key === 'match_json' || !value) return;
+    const selector = key === 'image_path' ? '[name="image_url"]' : '[name="' + key + '"]';
+    const input = form.querySelector(selector);
+    if (input && !input.value.trim()) {
+      input.value = value;
+      markFieldAutoFilled(input);
+    }
+  });
+}
+
+function markFieldAutoFilled(input) {
+  input.classList.add('auto-filled');
+  const label = input.previousElementSibling;
+  if (label && label.tagName === 'LABEL' && !label.querySelector('.auto-fill-marker')) {
+    const marker = document.createElement('span');
+    marker.className = 'auto-fill-marker';
+    marker.title = 'Filled in from search';
+    marker.textContent = ' ✨';
+    label.appendChild(marker);
+  }
+  const clear = () => {
+    input.classList.remove('auto-filled');
+    if (label) {
+      const m = label.querySelector('.auto-fill-marker');
+      if (m) m.remove();
+    }
+    input.removeEventListener('input', clear);
+  };
+  input.addEventListener('input', clear);
+}
+
 function fillAddFormFromData(data) {
   const container = document.getElementById('add-item-slot');
   if (!container) return;
