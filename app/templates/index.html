@@ -265,10 +265,14 @@ function searchNewItemMetadata(btn) {
 }
 
 function fillAddForm(el) {
-  const data = JSON.parse(el.dataset.match);
+  fillAddFormFromData(JSON.parse(el.dataset.match));
+}
+
+function fillAddFormFromData(data) {
   const container = document.getElementById('add-item-slot');
   if (!container) return;
   Object.entries(data).forEach(([key, value]) => {
+    if (key === 'match_json') return;
     if (key === 'image_path') {
       const urlInput = container.querySelector('input[name="image_url"]');
       if (urlInput) urlInput.value = value;
@@ -279,6 +283,101 @@ function fillAddForm(el) {
   });
   const results = document.getElementById('new-item-search-results');
   if (results) results.innerHTML = '';
+}
+
+// Mirrors the BGG confirm modal (bgg_confirm_modal.html) for OMDb/TMDb/web-image
+// results -- those already carry every field up front in match_json (no second
+// server round-trip needed like BGG's search-then-detail-fetch), so this builds
+// the same image/details/description confirm popup entirely client-side.
+const METADATA_MODAL_DETAIL_FIELDS = ["Rating", "Year Released", "Length of Movie", "Genre", "Type"];
+
+function openMetadataConfirmModal(el) {
+  const data = JSON.parse(el.dataset.match);
+  const mode = el.dataset.mode;
+  const modal = document.getElementById('modal-slot');
+  modal.innerHTML = '';
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) modal.innerHTML = ''; });
+
+  const card = document.createElement('div');
+  card.className = 'modal-card';
+  backdrop.appendChild(card);
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'modal-close';
+  closeBtn.textContent = '✖';
+  closeBtn.addEventListener('click', () => { modal.innerHTML = ''; });
+  card.appendChild(closeBtn);
+
+  if (data.image_path) {
+    const img = document.createElement('img');
+    img.src = data.image_path;
+    img.className = 'modal-cover';
+    img.alt = '';
+    card.appendChild(img);
+  }
+
+  const h3 = document.createElement('h3');
+  h3.textContent = data.Title || '';
+  card.appendChild(h3);
+
+  const ul = document.createElement('ul');
+  ul.className = 'modal-details';
+  METADATA_MODAL_DETAIL_FIELDS.forEach(field => {
+    if (!data[field]) return;
+    const li = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = field + ': ';
+    li.appendChild(strong);
+    li.appendChild(document.createTextNode(data[field]));
+    ul.appendChild(li);
+  });
+  card.appendChild(ul);
+
+  if (data.Description) {
+    const p = document.createElement('p');
+    p.className = 'modal-description';
+    p.textContent = data.Description;
+    card.appendChild(p);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'modal-actions';
+
+  const applyBtn = document.createElement('button');
+  applyBtn.type = 'button';
+  applyBtn.className = 'btn-primary';
+  applyBtn.textContent = '✅ Apply';
+  applyBtn.addEventListener('click', () => {
+    if (mode === 'new') {
+      fillAddFormFromData(data);
+    } else {
+      const values = Object.assign({}, data);
+      delete values.match_json;
+      const panel = el.dataset.panel;
+      if (panel) values.panel = panel;
+      htmx.ajax('POST', '/items/' + el.dataset.itemId + '/apply-metadata', {
+        target: '#' + el.dataset.targetId,
+        swap: 'outerHTML',
+        values: values,
+      });
+    }
+    modal.innerHTML = '';
+  });
+  actions.appendChild(applyBtn);
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'btn-plain';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => { modal.innerHTML = ''; });
+  actions.appendChild(cancelBtn);
+
+  card.appendChild(actions);
+  modal.appendChild(backdrop);
 }
 
 function refreshMissingMetaBanner() {

@@ -19,15 +19,15 @@
       Select
     </button>
     {% elif item %}
-    <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#{{ target_id }}" hx-swap="outerHTML">
-      {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
-      {% for k, v in m.items() %}
-      {% if k not in ("id", "match_json") %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}
-      {% endfor %}
-      <button type="submit" class="btn-primary">✅ Apply</button>
-    </form>
+    <button type="button" class="btn-primary" data-match="{{ m.match_json }}" data-mode="apply"
+      data-item-id="{{ item.id }}" data-target-id="{{ target_id }}" data-panel="{{ panel }}"
+      onclick="openMetadataConfirmModal(this)">
+      Select
+    </button>
     {% else %}
-    <button type="button" class="btn-primary" data-match="{{ m.match_json }}" onclick="fillAddForm(this)">Use This</button>
+    <button type="button" class="btn-primary" data-match="{{ m.match_json }}" data-mode="new" onclick="openMetadataConfirmModal(this)">
+      Select
+    </button>
     {% endif %}
   </div>
   {% endfor %}
