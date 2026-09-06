@@ -8,23 +8,25 @@
     {% if m.image_path %}
     <img src="{{ m.image_path }}" alt="">
     {% elif kind == "bgg" and m.get("id") %}
-    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id }}/lookup/bgg-thumb?bgg_id={{ m.id }}" hx-trigger="click" hx-swap="innerHTML" title="Click to load image">🖼️</div>
+    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/bgg-thumb?bgg_id={{ m.id }}" hx-trigger="click" hx-swap="innerHTML" title="Click to load image">🖼️</div>
     {% endif %}
     {% if m.Title %}<div class="lookup-title">{{ m.Title }}{% if m.get("Year Released") %} ({{ m["Year Released"] }}){% endif %}</div>{% endif %}
 
     {% if kind == "bgg" and m.get("id") %}
     <button type="button" class="btn-primary" data-title="{{ m.Title }}"
-      onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent(this.dataset.title) + '{{ ('&panel=' + panel) if panel else '' }}', {target: '#modal-slot', swap: 'innerHTML'})">
+      onclick="htmx.ajax('GET', '/items/{{ item.id if item else 'new' }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent(this.dataset.title) + '{{ ('&panel=' + panel) if panel else '' }}', {target: '#modal-slot', swap: 'innerHTML'})">
       Select
     </button>
-    {% else %}
+    {% elif item %}
     <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#{{ target_id }}" hx-swap="outerHTML">
       {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
       {% for k, v in m.items() %}
-      {% if k != "id" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}
+      {% if k not in ("id", "match_json") %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}
       {% endfor %}
       <button type="submit" class="btn-primary">✅ Apply</button>
     </form>
+    {% else %}
+    <button type="button" class="btn-primary" data-match="{{ m.match_json }}" onclick="fillAddForm(this)">Use This</button>
     {% endif %}
   </div>
   {% endfor %}

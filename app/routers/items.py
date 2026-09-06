@@ -28,6 +28,16 @@ def _get_item_or_404(repo: Repository, item_id: str) -> Item:
     return item
 
 
+def _item_or_none(repo: Repository, item_id: str) -> Item | None:
+    # The Add Item form searches metadata before an item exists yet -- it hits
+    # these same lookup routes with the sentinel id "new" instead of a real one.
+    return None if item_id == "new" else _get_item_or_404(repo, item_id)
+
+
+def _match_json(match: dict) -> str:
+    return json.dumps({k: v for k, v in match.items() if k != "id"})
+
+
 def _fuzzy_filter(items: list[Item], query: str) -> list[Item]:
     query = query.strip().lower()
     if not query:
@@ -226,7 +236,7 @@ def _target_id(item_id: str, panel: str) -> str:
 
 @router.get("/items/{item_id}/lookup/omdb", response_class=HTMLResponse)
 def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
-    item = _get_item_or_404(repo, item_id)
+    item = _item_or_none(repo, item_id)
     cleaned_q = _clean_movie_query(q)
     looks_like_bundle = cleaned_q != q.strip()
 
@@ -265,6 +275,9 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
         if box_art:
             notes.append("This looks like a multi-movie combo pack -- web results for the actual box art are included too (poster only, no other metadata).")
 
+    for m in matches:
+        m["match_json"] = _match_json(m)
+
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
@@ -274,7 +287,7 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
 
 @router.get("/items/{item_id}/lookup/bgg", response_class=HTMLResponse)
 def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
-    item = _get_item_or_404(repo, item_id)
+    item = _item_or_none(repo, item_id)
     raw_matches = fetch_bgg_game_matches(q)
     matches = []
     for m in raw_matches[:8]:
@@ -308,7 +321,7 @@ def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, repo: Reposito
     # endpoint does -- so each search result lazy-loads its own thumbnail via this
     # endpoint after the results render, rather than fetching full details for every
     # candidate up front (which would be several BGG API round-trips per game).
-    _get_item_or_404(repo, item_id)
+    _item_or_none(repo, item_id)
     details = fetch_bgg_game_details(bgg_id)
     return templates.TemplateResponse(request, "partials/bgg_thumb.html", {"image_path": details.get("image_path", "")})
 
@@ -317,9 +330,9 @@ def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, repo: Reposito
 def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, panel: str = "", repo: Repository = Depends(get_repository)):
     # Rendered into the global #modal-slot (see base.html) rather than swapped inline --
     # a modal always has the same home regardless of whether this was opened from the
-    # edit drawer or the missing-metadata panel, so it sidesteps needing to track a
-    # different "in-progress results" container id per context.
-    item = _get_item_or_404(repo, item_id)
+    # edit drawer, the missing-metadata panel, or the Add Item form, so it sidesteps
+    # needing to track a different "in-progress results" container id per context.
+    item = _item_or_none(repo, item_id)
     details = fetch_bgg_game_details(bgg_id)
     match = {
         "Title": title,
@@ -332,20 +345,28 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
     return templates.TemplateResponse(
         request,
         "partials/bgg_confirm_modal.html",
-        {"item": item, "match": match, "panel": panel, "target_id": _target_id(item_id, panel)},
+        {"item": item, "match": match, "match_json": _match_json(match), "panel": panel, "target_id": _target_id(item_id, panel)},
     )
 
 
 @router.get("/items/{item_id}/lookup/web-images", response_class=HTMLResponse)
 def lookup_web_images(request: Request, item_id: str, q: str, repo: Repository = Depends(get_repository)):
-    item = _get_item_or_404(repo, item_id)
+    item = _item_or_none(repo, item_id)
     urls = search_multiple_web_images(q, num_results=8)
-    matches = [{"image_path": url} for url in urls]
+    matches = [{"image_path": url, "match_json": _match_json({"image_path": url})} for url in urls]
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
         {"item": item, "matches": matches, "kind": "image", "target_id": _target_id(item_id, ""), "panel": ""},
     )
+
+
+@router.get("/categories/{slug}/new-lookup-panel", response_class=HTMLResponse)
+def new_lookup_panel(request: Request, slug: str, repo: Repository = Depends(get_repository)):
+    category = repo.get_category(slug)
+    if category is None:
+        raise HTTPException(404, f"Unknown category '{slug}'")
+    return templates.TemplateResponse(request, "partials/new_item_lookup_panel.html", {"category": category})
 
 
 @router.post("/items/{item_id}/apply-metadata", response_class=HTMLResponse)

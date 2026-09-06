@@ -9,6 +9,7 @@
       {% if match.get("Age Rating") %}<li><strong>Age:</strong> {{ match["Age Rating"] }}</li>{% endif %}
     </ul>
     {% if match.get("Description") %}<p class="modal-description">{{ match.Description }}</p>{% endif %}
+    {% if item %}
     <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#{{ target_id }}" hx-swap="outerHTML"
           hx-on::after-request="document.getElementById('modal-slot').innerHTML=''">
       {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
@@ -23,5 +24,12 @@
         <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Cancel</button>
       </div>
     </form>
+    {% else %}
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-match="{{ match_json }}"
+        onclick="fillAddForm(this); document.getElementById('modal-slot').innerHTML=''">✅ Use This</button>
+      <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Cancel</button>
+    </div>
+    {% endif %}
   </div>
 </div>

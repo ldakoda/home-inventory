@@ -158,6 +158,37 @@ document.body.addEventListener('htmx:afterSwap', function (evt) {
 });
 applyListDisplay();
 
+function searchNewItemMetadata(btn) {
+  const slug = btn.dataset.slug;
+  const primaryField = btn.dataset.primaryField;
+  const input = document.querySelector('#dynamic-fields [name="' + primaryField + '"]');
+  const q = input ? input.value.trim() : '';
+  const results = document.getElementById('new-item-search-results');
+  if (!q) {
+    if (results) results.innerHTML = '<p class="empty">Type a ' + primaryField + ' above first.</p>';
+    return;
+  }
+  const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : 'web-images';
+  htmx.ajax('GET', '/items/new/lookup/' + path + '?q=' + encodeURIComponent(q), {target: '#new-item-search-results', swap: 'innerHTML'});
+}
+
+function fillAddForm(el) {
+  const data = JSON.parse(el.dataset.match);
+  const container = document.getElementById('add-item-slot');
+  if (!container) return;
+  Object.entries(data).forEach(([key, value]) => {
+    if (key === 'image_path') {
+      const urlInput = container.querySelector('input[name="image_url"]');
+      if (urlInput) urlInput.value = value;
+      return;
+    }
+    const input = container.querySelector('[name="' + key + '"]');
+    if (input) input.value = value;
+  });
+  const results = document.getElementById('new-item-search-results');
+  if (results) results.innerHTML = '';
+}
+
 function refreshMissingMetaBanner() {
   const slug = document.getElementById('category-filter').value;
   htmx.ajax('GET', '/categories/' + slug + '/missing-metadata', {target: '#missing-metadata-banner', swap: 'innerHTML'});

@@ -2,7 +2,10 @@
   <h3>➕ Add New Item</h3>
   <form hx-post="/items" hx-target="#add-item-slot" hx-swap="innerHTML" hx-encoding="multipart/form-data">
     <label>Category</label>
-    <select name="category_slug" onchange="htmx.ajax('GET', '/categories/'+this.value+'/fields', {target: '#dynamic-fields', swap: 'innerHTML'})">
+    <select name="category_slug" onchange="
+      htmx.ajax('GET', '/categories/'+this.value+'/fields', {target: '#dynamic-fields', swap: 'innerHTML'});
+      htmx.ajax('GET', '/categories/'+this.value+'/new-lookup-panel', {target: '#new-item-lookup-panel', swap: 'innerHTML'});
+    ">
       {% for c in categories %}
       <option value="{{ c.slug }}" {{ 'selected' if c.slug == category.slug else '' }}>{{ c.icon }} {{ c.name }}</option>
       {% endfor %}
@@ -10,6 +13,10 @@
 
     <div id="dynamic-fields">
       {% include "partials/field_inputs.html" %}
+    </div>
+
+    <div id="new-item-lookup-panel">
+      {% include "partials/new_item_lookup_panel.html" %}
     </div>
 
     <label>Photo URL</label>
