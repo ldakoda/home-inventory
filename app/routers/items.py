@@ -110,6 +110,7 @@ def index(request: Request, repo: Repository = Depends(get_repository)):
     # Fields available per category, for the client-side "detail to show / sort by"
     # picker -- primary_field is excluded since that's already the item's name/title.
     category_fields = {c.slug: [f for f in c.fields if f != c.primary_field] for c in categories}
+    category_names = {c.slug: f"{c.icon} {c.name}" for c in categories}
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -119,6 +120,7 @@ def index(request: Request, repo: Repository = Depends(get_repository)):
             "active_category": "all",
             "q": "",
             "category_fields_json": json.dumps(category_fields),
+            "category_names_json": json.dumps(category_names),
         },
     )
 

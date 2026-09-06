@@ -27,17 +27,18 @@
   </div>
 </div>
 
+<div id="list-header"></div>
 <div id="items-list" hx-trigger="refreshList from:body" hx-get="/items" hx-include="#search-q,#category-filter" hx-swap="innerHTML">
   {% include "partials/item_list.html" %}
 </div>
 
 <script>
-function selectCategory(slug, btn) {
+function selectCategory(slug) {
   document.getElementById('category-filter').value = slug;
-  document.querySelectorAll('#category-tabs .tab').forEach(b => b.classList.remove('active'));
-  btn.classList.add('active');
+  document.querySelectorAll('#category-tabs .tab').forEach(b => b.classList.toggle('active', b.dataset.slug === slug));
   htmx.trigger(document.getElementById('search-q'), 'search-now');
   refreshMissingMetaBanner();
+  renderListHeader();
 }
 
 function setViewMode(mode) {
@@ -49,13 +50,17 @@ function applyViewMode(mode) {
   document.getElementById('items-list').classList.toggle('grid-view', mode === 'grid');
   document.getElementById('view-list-btn').classList.toggle('active', mode !== 'grid');
   document.getElementById('view-grid-btn').classList.toggle('active', mode === 'grid');
+  renderListHeader();
 }
 
-applyViewMode(localStorage.getItem('itemViewMode') || 'list');
-
-// Fields available per category (primary field excluded, since that's the
-// item's name/title already) -- powers the "Details & Sort" picker below.
+// Fields/display-names per category (primary field excluded from fields, since
+// that's the item's name/title already) -- powers the "Details & Sort" picker.
+// Declared before the initial applyViewMode() call below since that already
+// triggers renderListHeader(), which reads CATEGORY_FIELDS.
 const CATEGORY_FIELDS = {{ category_fields_json | safe }};
+const CATEGORY_NAMES = {{ category_names_json | safe }};
+
+applyViewMode(localStorage.getItem('itemViewMode') || 'list');
 
 function slugifyField(f) {
   return f.toLowerCase().replace(/[^a-z0-9]+/g, '-');
@@ -74,28 +79,33 @@ function saveViewOptions(slug, opts) {
 }
 
 function openViewOptions() {
-  const slug = document.getElementById('category-filter').value;
+  let slug = document.getElementById('category-filter').value;
+  const configurableSlugs = Object.keys(CATEGORY_FIELDS);
+  if (!configurableSlugs.includes(slug)) {
+    slug = configurableSlugs[0];
+    selectCategory(slug);
+  }
   const fields = CATEGORY_FIELDS[slug] || [];
   const current = loadViewOptions(slug);
-  let body;
 
-  if (slug === 'all' || fields.length === 0) {
-    body = '<p class="lookup-hint">Select a specific category tab first to choose which detail to show and how to sort it.</p>';
+  const categoryPicker =
+    '<label class="lookup-label">Category:</label>' +
+    '<select onchange="selectCategory(this.value); openViewOptions();">' +
+    configurableSlugs.map(s => '<option value="' + s + '" ' + (s === slug ? 'selected' : '') + '>' + (CATEGORY_NAMES[s] || s) + '</option>').join('') +
+    '</select>';
+
+  let body;
+  if (fields.length === 0) {
+    body = '<p class="lookup-hint">This category has no extra fields to show or sort by.</p>';
   } else {
-    const radioGroup = (name, options, currentValue, noneLabel) => {
-      const noneChecked = !currentValue ? 'checked' : '';
-      let html = '<label><input type="radio" name="' + name + '" value="" ' + noneChecked + '> ' + noneLabel + '</label>';
-      options.forEach(f => {
-        const checked = currentValue === f ? 'checked' : '';
-        html += '<label><input type="radio" name="' + name + '" value="' + f + '" ' + checked + '> ' + f + '</label>';
-      });
-      return html;
-    };
+    let radios = '<label><input type="radio" name="detailField" value="" ' + (!current.detailField ? 'checked' : '') + '> None</label>';
+    fields.forEach(f => {
+      radios += '<label><input type="radio" name="detailField" value="' + f + '" ' + (current.detailField === f ? 'checked' : '') + '> ' + f + '</label>';
+    });
     body =
       '<p class="lookup-label">Show as detail:</p>' +
-      '<div class="view-options-list">' + radioGroup('detailField', fields, current.detailField, 'None') + '</div>' +
-      '<p class="lookup-label">Sort by:</p>' +
-      '<div class="view-options-list">' + radioGroup('sortField', fields, current.sortField, 'Name (default)') + '</div>';
+      '<div class="view-options-list">' + radios + '</div>' +
+      '<p class="lookup-hint">Tip: once shown, tap the column header above the list to sort by it.</p>';
   }
 
   document.getElementById('modal-slot').innerHTML =
@@ -103,9 +113,10 @@ function openViewOptions() {
       '<div class="modal-card">' +
         '<button type="button" class="modal-close" onclick="document.getElementById(\'modal-slot\').innerHTML=\'\'">✖</button>' +
         '<h3>View Options</h3>' +
+        categoryPicker +
         body +
         '<div class="modal-actions">' +
-          (slug === 'all' || fields.length === 0 ? '' : '<button type="button" class="btn-primary" onclick="applyViewOptionsFromModal(\'' + slug + '\')">Apply</button>') +
+          (fields.length === 0 ? '' : '<button type="button" class="btn-primary" onclick="applyViewOptionsFromModal(\'' + slug + '\')">Apply</button>') +
           '<button type="button" class="btn-plain" onclick="document.getElementById(\'modal-slot\').innerHTML=\'\'">Close</button>' +
         '</div>' +
       '</div>' +
@@ -115,10 +126,54 @@ function openViewOptions() {
 function applyViewOptionsFromModal(slug) {
   const modal = document.getElementById('modal-slot');
   const detailField = (modal.querySelector('input[name="detailField"]:checked') || {}).value || '';
-  const sortField = (modal.querySelector('input[name="sortField"]:checked') || {}).value || '';
-  saveViewOptions(slug, {detailField, sortField});
+  // Changing what's displayed resets sort back to Name -- an old sort field that's
+  // no longer shown as a column would otherwise keep silently affecting order.
+  saveViewOptions(slug, {detailField: detailField, sortField: '', sortDir: 'asc'});
   modal.innerHTML = '';
+  renderListHeader();
   applyListDisplay();
+}
+
+function setSortField(slug, field) {
+  const opts = loadViewOptions(slug);
+  const current = opts.sortField || '';
+  opts.sortDir = (current === field && opts.sortDir === 'asc') ? 'desc' : 'asc';
+  opts.sortField = field;
+  saveViewOptions(slug, opts);
+  renderListHeader();
+  applyListDisplay();
+}
+
+function renderListHeader() {
+  const headerEl = document.getElementById('list-header');
+  if (!headerEl) return;
+  const mode = localStorage.getItem('itemViewMode') || 'list';
+  const slug = document.getElementById('category-filter').value;
+
+  if (mode !== 'list' || !CATEGORY_FIELDS[slug]) {
+    headerEl.innerHTML = '';
+    return;
+  }
+
+  const opts = loadViewOptions(slug);
+  const sortField = opts.sortField || '';
+  const sortDir = opts.sortDir || 'asc';
+  const arrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+
+  let detailCol = '';
+  if (opts.detailField) {
+    detailCol = '<button type="button" class="list-header-col" onclick="setSortField(\'' + slug + '\', \'' + opts.detailField + '\')">' + opts.detailField + arrow(opts.detailField) + '</button>';
+  }
+
+  headerEl.innerHTML =
+    '<div class="item-row list-header-row">' +
+      '<div class="item-thumb"></div>' +
+      '<div class="item-main list-header-main">' +
+        '<button type="button" class="list-header-col" onclick="setSortField(\'' + slug + '\', \'\')">Name' + arrow('') + '</button>' +
+        detailCol +
+      '</div>' +
+      '<div class="item-actions"></div>' +
+    '</div>';
 }
 
 function applyListDisplay() {
@@ -141,14 +196,16 @@ function applyListDisplay() {
   // Attribute-based sort only makes sense within a single category (different
   // categories don't share fields) -- "All" keeps the server's name order.
   const activeSlug = document.getElementById('category-filter').value;
-  if (activeSlug !== 'all') {
+  if (CATEGORY_FIELDS[activeSlug]) {
     const opts = loadViewOptions(activeSlug);
-    if (opts.sortField) {
-      const key = 'data-field-' + slugifyField(opts.sortField);
-      rows.sort((a, b) => (a.getAttribute(key) || '').localeCompare(b.getAttribute(key) || '', undefined, {numeric: true, sensitivity: 'base'}));
-      rows.forEach(r => container.appendChild(r));
-    }
+    const dir = opts.sortDir === 'desc' ? -1 : 1;
+    const compare = opts.sortField
+      ? (a, b) => (a.getAttribute('data-field-' + slugifyField(opts.sortField)) || '').localeCompare(b.getAttribute('data-field-' + slugifyField(opts.sortField)) || '', undefined, {numeric: true, sensitivity: 'base'})
+      : (a, b) => (a.querySelector('.item-name').textContent || '').localeCompare(b.querySelector('.item-name').textContent || '', undefined, {numeric: true, sensitivity: 'base'});
+    rows.sort((a, b) => dir * compare(a, b));
+    rows.forEach(r => container.appendChild(r));
   }
+  renderListHeader();
 }
 
 document.body.addEventListener('htmx:afterSwap', function (evt) {
