@@ -1,4 +1,5 @@
 import difflib
+import json
 import re
 from urllib.parse import urlparse
 
@@ -96,10 +97,19 @@ def _is_media_retailer(url: str) -> bool:
 def index(request: Request, repo: Repository = Depends(get_repository)):
     categories = repo.list_categories()
     items = repo.list_items()
+    # Fields available per category, for the client-side "detail to show / sort by"
+    # picker -- primary_field is excluded since that's already the item's name/title.
+    category_fields = {c.slug: [f for f in c.fields if f != c.primary_field] for c in categories}
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"categories": categories, "items": items, "active_category": "all", "q": ""},
+        {
+            "categories": categories,
+            "items": items,
+            "active_category": "all",
+            "q": "",
+            "category_fields_json": json.dumps(category_fields),
+        },
     )
 
 

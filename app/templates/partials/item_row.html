@@ -1,4 +1,5 @@
-<div id="item-{{ item.id }}" class="item-row">
+<div id="item-{{ item.id }}" class="item-row" data-category="{{ item.category.slug }}"
+  {% for field in item.category.fields %}{% if field != item.category.primary_field %}data-field-{{ field | lower | replace(' ', '-') }}="{{ item.attributes.get(field, '') }}" {% endif %}{% endfor %}>
   <div class="item-thumb item-clickable" hx-get="/items/{{ item.id }}/view" hx-target="#modal-slot" hx-swap="innerHTML">
     {% if item.image_path %}
     <img src="{{ item.image_path }}" loading="lazy" alt="">
@@ -8,7 +9,7 @@
   </div>
   <div class="item-main item-clickable" hx-get="/items/{{ item.id }}/view" hx-target="#modal-slot" hx-swap="innerHTML">
     <div class="item-name">{{ item.name }}</div>
-    <div class="item-meta">{{ item.category.icon }} {{ item.category.name }}</div>
+    <div class="item-meta"><span class="item-meta-base">{{ item.category.icon }} {{ item.category.name }}</span><span class="item-meta-extra"></span></div>
   </div>
   <div class="item-actions">
     <button class="btn-plain" hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML">✏️ Edit</button>

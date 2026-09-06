@@ -23,6 +23,7 @@
   <div class="view-toggle">
     <button type="button" id="view-list-btn" class="btn-plain" onclick="setViewMode('list')">☰ Details</button>
     <button type="button" id="view-grid-btn" class="btn-plain" onclick="setViewMode('grid')">🔳 Icons</button>
+    <button type="button" class="btn-plain" onclick="openViewOptions()">⚙️ Details &amp; Sort</button>
   </div>
 </div>
 
@@ -51,6 +52,111 @@ function applyViewMode(mode) {
 }
 
 applyViewMode(localStorage.getItem('itemViewMode') || 'list');
+
+// Fields available per category (primary field excluded, since that's the
+// item's name/title already) -- powers the "Details & Sort" picker below.
+const CATEGORY_FIELDS = {{ category_fields_json | safe }};
+
+function slugifyField(f) {
+  return f.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+function loadViewOptions(slug) {
+  try {
+    return JSON.parse(localStorage.getItem('viewOptions:' + slug) || '{}');
+  } catch (e) {
+    return {};
+  }
+}
+
+function saveViewOptions(slug, opts) {
+  localStorage.setItem('viewOptions:' + slug, JSON.stringify(opts));
+}
+
+function openViewOptions() {
+  const slug = document.getElementById('category-filter').value;
+  const fields = CATEGORY_FIELDS[slug] || [];
+  const current = loadViewOptions(slug);
+  let body;
+
+  if (slug === 'all' || fields.length === 0) {
+    body = '<p class="lookup-hint">Select a specific category tab first to choose which detail to show and how to sort it.</p>';
+  } else {
+    const radioGroup = (name, options, currentValue, noneLabel) => {
+      const noneChecked = !currentValue ? 'checked' : '';
+      let html = '<label><input type="radio" name="' + name + '" value="" ' + noneChecked + '> ' + noneLabel + '</label>';
+      options.forEach(f => {
+        const checked = currentValue === f ? 'checked' : '';
+        html += '<label><input type="radio" name="' + name + '" value="' + f + '" ' + checked + '> ' + f + '</label>';
+      });
+      return html;
+    };
+    body =
+      '<p class="lookup-label">Show as detail:</p>' +
+      '<div class="view-options-list">' + radioGroup('detailField', fields, current.detailField, 'None') + '</div>' +
+      '<p class="lookup-label">Sort by:</p>' +
+      '<div class="view-options-list">' + radioGroup('sortField', fields, current.sortField, 'Name (default)') + '</div>';
+  }
+
+  document.getElementById('modal-slot').innerHTML =
+    '<div class="modal-backdrop" onclick="if (event.target === this) this.remove()">' +
+      '<div class="modal-card">' +
+        '<button type="button" class="modal-close" onclick="document.getElementById(\'modal-slot\').innerHTML=\'\'">✖</button>' +
+        '<h3>View Options</h3>' +
+        body +
+        '<div class="modal-actions">' +
+          (slug === 'all' || fields.length === 0 ? '' : '<button type="button" class="btn-primary" onclick="applyViewOptionsFromModal(\'' + slug + '\')">Apply</button>') +
+          '<button type="button" class="btn-plain" onclick="document.getElementById(\'modal-slot\').innerHTML=\'\'">Close</button>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function applyViewOptionsFromModal(slug) {
+  const modal = document.getElementById('modal-slot');
+  const detailField = (modal.querySelector('input[name="detailField"]:checked') || {}).value || '';
+  const sortField = (modal.querySelector('input[name="sortField"]:checked') || {}).value || '';
+  saveViewOptions(slug, {detailField, sortField});
+  modal.innerHTML = '';
+  applyListDisplay();
+}
+
+function applyListDisplay() {
+  const container = document.getElementById('items-list');
+  if (!container) return;
+  const rows = Array.from(container.querySelectorAll('.item-row'));
+
+  rows.forEach(row => {
+    const opts = loadViewOptions(row.dataset.category);
+    const extraEl = row.querySelector('.item-meta-extra');
+    if (!extraEl) return;
+    if (opts.detailField) {
+      const value = row.getAttribute('data-field-' + slugifyField(opts.detailField));
+      extraEl.textContent = value ? ' · ' + value : '';
+    } else {
+      extraEl.textContent = '';
+    }
+  });
+
+  // Attribute-based sort only makes sense within a single category (different
+  // categories don't share fields) -- "All" keeps the server's name order.
+  const activeSlug = document.getElementById('category-filter').value;
+  if (activeSlug !== 'all') {
+    const opts = loadViewOptions(activeSlug);
+    if (opts.sortField) {
+      const key = 'data-field-' + slugifyField(opts.sortField);
+      rows.sort((a, b) => (a.getAttribute(key) || '').localeCompare(b.getAttribute(key) || '', undefined, {numeric: true, sensitivity: 'base'}));
+      rows.forEach(r => container.appendChild(r));
+    }
+  }
+}
+
+document.body.addEventListener('htmx:afterSwap', function (evt) {
+  if (evt.detail.target && evt.detail.target.id === 'items-list') {
+    applyListDisplay();
+  }
+});
+applyListDisplay();
 
 function refreshMissingMetaBanner() {
   const slug = document.getElementById('category-filter').value;

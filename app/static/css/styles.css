@@ -111,13 +111,15 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
   border-radius: var(--radius);
   padding: 8px 12px;
 }
-.item-thumb { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.item-thumb { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .item-clickable { cursor: pointer; }
 .item-thumb img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
-.item-thumb .emoji { font-size: 1.4rem; }
+.item-thumb .emoji { font-size: 0.7rem; }
 .item-main { flex: 1; min-width: 0; }
-.item-name { font-weight: 600; }
-.item-meta { font-size: 0.8rem; color: var(--text-muted); }
+.item-name { font-weight: 600; font-size: 0.5rem; }
+.item-meta { font-size: 0.4rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.view-options-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 14px; }
+.view-options-list label { display: flex; align-items: center; gap: 6px; font-weight: 400; font-size: 0.9rem; }
 
 #items-list.grid-view {
   display: grid;
