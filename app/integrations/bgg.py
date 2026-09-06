@@ -1,4 +1,6 @@
+import html
 import logging
+import re
 import threading
 import time
 import urllib.parse
@@ -147,12 +149,25 @@ def _parse_details(xml_content: bytes) -> dict:
     if age and age != "0":
         age = f"{age}+"
 
+    desc_elem = item.find("description")
+    description = _clean_description(desc_elem.text) if desc_elem is not None and desc_elem.text else ""
+
     return {
         "image_path": image_path,
         "Number of Players": players,
         "Length of Play": length,
         "Age Rating": age,
+        "Description": description,
     }
+
+
+def _clean_description(text: str) -> str:
+    # BGG descriptions are sometimes HTML-entity-encoded a second time on top of
+    # the XML encoding ElementTree already decoded (e.g. a literal "&amp;" left
+    # in the text), and often carry embedded line breaks as blank-line runs.
+    text = html.unescape(text)
+    text = re.sub(r"\n{3,}", "\n\n", text.strip())
+    return text
 
 
 def _attr(item: ET.Element, tag: str) -> str:

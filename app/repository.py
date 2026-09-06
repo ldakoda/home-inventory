@@ -64,6 +64,9 @@ class Repository:
             "is_builtin": category.is_builtin,
         })
 
+    def update_category(self, slug: str, **fields) -> None:
+        self.db.collection(CATEGORIES).document(slug).update(fields)
+
     # -- items ----------------------------------------------------------
 
     def list_items(self, category_slug: str | None = None) -> list[Item]:

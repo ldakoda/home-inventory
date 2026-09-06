@@ -200,6 +200,7 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 .modal-card h3 { margin: 0 0 10px; }
 .modal-details { list-style: none; padding: 0; margin: 0 0 16px; text-align: left; font-size: 0.9rem; }
 .modal-details li { padding: 4px 0; border-bottom: 1px solid var(--border); }
+.modal-description { text-align: left; font-size: 0.85rem; color: var(--text-muted); white-space: pre-line; margin: 0 0 16px; }
 .modal-actions { display: flex; gap: 8px; justify-content: center; }
 
 .error { color: var(--danger); }

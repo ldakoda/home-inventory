@@ -6,11 +6,12 @@
     <p class="lookup-label">{{ item.category.icon }} {{ item.category.name }}</p>
     <ul class="modal-details">
       {% for field in item.category.fields %}
-      {% if field != item.category.primary_field and item.attributes.get(field) %}
+      {% if field != item.category.primary_field and field != "Description" and item.attributes.get(field) %}
       <li><strong>{{ field }}:</strong> {{ item.attributes[field] }}</li>
       {% endif %}
       {% endfor %}
     </ul>
+    {% if item.attributes.get("Description") %}<p class="modal-description">{{ item.attributes.Description }}</p>{% endif %}
     <div class="modal-actions">
       <button type="button" class="btn-primary"
         hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML"

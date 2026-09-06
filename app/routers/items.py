@@ -316,6 +316,7 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
         "Number of Players": details.get("Number of Players", ""),
         "Length of Play": details.get("Length of Play", ""),
         "Age Rating": details.get("Age Rating", ""),
+        "Description": details.get("Description", ""),
         "image_path": details.get("image_path", ""),
     }
     return templates.TemplateResponse(

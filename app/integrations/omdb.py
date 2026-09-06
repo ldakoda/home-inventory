@@ -33,6 +33,7 @@ def fetch_omdb_movie_matches(movie_title: str) -> list[dict]:
                     "Length of Movie": d_res.get("Runtime", ""),
                     "Type": d_res.get("Type", "movie").capitalize(),
                     "Genre": d_res.get("Genre", ""),
+                    "Description": d_res.get("Plot") if d_res.get("Plot") not in (None, "N/A") else "",
                     "image_path": d_res.get("Poster") if d_res.get("Poster") not in (None, "N/A") else "",
                 })
         return matches

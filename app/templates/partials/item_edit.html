@@ -4,7 +4,11 @@
 
     {% for field in item.category.fields %}
     <label>{{ field }}{{ ' *' if field == item.category.primary_field else '' }}</label>
+    {% if field == "Description" %}
+    <textarea name="{{ field }}" rows="4">{{ item.attributes.get(field, '') }}</textarea>
+    {% else %}
     <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}">
+    {% endif %}
     {% endfor %}
 
     <label>Photo URL</label>
