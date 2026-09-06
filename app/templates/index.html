@@ -158,13 +158,12 @@ function renderListHeader() {
   const headerEl = document.getElementById('list-header');
   if (!headerEl) return;
   const mode = localStorage.getItem('itemViewMode') || 'list';
-  const slug = document.getElementById('category-filter').value;
-
   headerEl.innerHTML = '';
-  if (mode !== 'list' || !CATEGORY_FIELDS[slug]) return;
+  if (mode !== 'list') return;
 
+  const slug = document.getElementById('category-filter').value;
   const opts = loadViewOptions(slug);
-  const detailFields = opts.detailFields || [];
+  const detailFields = (CATEGORY_FIELDS[slug] && opts.detailFields) || [];
   const sortField = opts.sortField || '';
   const sortDir = opts.sortDir || 'asc';
   const arrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -183,6 +182,11 @@ function renderListHeader() {
   nameCol.className = 'list-header-name-col';
   nameCol.appendChild(makeHeaderButton(slug, '', 'Name' + arrow('')));
   main.appendChild(nameCol);
+
+  const categoryCol = document.createElement('div');
+  categoryCol.className = 'list-header-category-col';
+  categoryCol.appendChild(makeHeaderButton(slug, '__category__', 'Category' + arrow('__category__')));
+  main.appendChild(categoryCol);
 
   const detailCols = document.createElement('div');
   detailCols.className = 'list-header-cols';
@@ -219,18 +223,23 @@ function applyListDisplay() {
     });
   });
 
-  // Attribute-based sort only makes sense within a single category (different
-  // categories don't share fields) -- "All" keeps the server's name order.
+  // Name and Category sort apply everywhere, including "All"; a custom field
+  // only makes sense within its own category (different categories don't
+  // share fields), but that's already enforced by what the header offers.
   const activeSlug = document.getElementById('category-filter').value;
-  if (CATEGORY_FIELDS[activeSlug]) {
-    const opts = loadViewOptions(activeSlug);
-    const dir = opts.sortDir === 'desc' ? -1 : 1;
-    const compare = opts.sortField
-      ? (a, b) => (a.getAttribute('data-field-' + slugifyField(opts.sortField)) || '').localeCompare(b.getAttribute('data-field-' + slugifyField(opts.sortField)) || '', undefined, {numeric: true, sensitivity: 'base'})
-      : (a, b) => (a.querySelector('.item-name').textContent || '').localeCompare(b.querySelector('.item-name').textContent || '', undefined, {numeric: true, sensitivity: 'base'});
-    rows.sort((a, b) => dir * compare(a, b));
-    rows.forEach(r => container.appendChild(r));
+  const opts = loadViewOptions(activeSlug);
+  const dir = opts.sortDir === 'desc' ? -1 : 1;
+  let compare;
+  if (opts.sortField === '__category__') {
+    compare = (a, b) => (a.dataset.categoryName || '').localeCompare(b.dataset.categoryName || '', undefined, {numeric: true, sensitivity: 'base'});
+  } else if (opts.sortField) {
+    const key = 'data-field-' + slugifyField(opts.sortField);
+    compare = (a, b) => (a.getAttribute(key) || '').localeCompare(b.getAttribute(key) || '', undefined, {numeric: true, sensitivity: 'base'});
+  } else {
+    compare = (a, b) => (a.querySelector('.item-name').textContent || '').localeCompare(b.querySelector('.item-name').textContent || '', undefined, {numeric: true, sensitivity: 'base'});
   }
+  rows.sort((a, b) => dir * compare(a, b));
+  rows.forEach(r => container.appendChild(r));
   renderListHeader();
 }
 
