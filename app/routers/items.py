@@ -381,7 +381,9 @@ def _items_missing_metadata(repo: Repository, slug: str) -> list[Item]:
     key_field = config["key_field"]
 
     def is_missing(item: Item) -> bool:
-        return not item.image_path or not item.attributes.get(key_field, "").strip()
+        if not item.image_path or not item.attributes.get(key_field, "").strip():
+            return True
+        return not item.attributes.get("Description", "").strip()
 
     return [i for i in repo.list_items(category_slug=slug) if is_missing(i)]
 
