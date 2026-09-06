@@ -290,7 +290,13 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
 @router.get("/items/{item_id}/lookup/bgg", response_class=HTMLResponse)
 def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _item_or_none(repo, item_id)
-    raw_matches = fetch_bgg_game_matches(q)
+    # The missing-metadata panel fires up to ~60 of these at once as a passive
+    # background scan; anything else (the edit drawer's or Add Item form's own
+    # search box) is a single deliberate click a user is actively waiting on.
+    # Give the latter the fast lane so it never queues behind the former's
+    # minutes-long backlog -- see bgg.py's _bulk_limiter/_priority_limiter.
+    priority = panel != "missing"
+    raw_matches = fetch_bgg_game_matches(q, priority=priority)
     matches = []
     for m in raw_matches[:8]:
         matches.append({"id": m["id"], "Title": m["name"], "Year Released": m.get("year", "")})
@@ -306,7 +312,7 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     # lookup_results.html's click-to-load thumb), since fetching all 8 up front would
     # multiply BGG API calls for no benefit.
     if matches:
-        top_details = fetch_bgg_game_details(matches[0]["id"])
+        top_details = fetch_bgg_game_details(matches[0]["id"], priority=priority)
         if top_details.get("image_path"):
             matches[0]["image_path"] = top_details["image_path"]
 
@@ -323,8 +329,9 @@ def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, repo: Reposito
     # endpoint does -- so each search result lazy-loads its own thumbnail via this
     # endpoint after the results render, rather than fetching full details for every
     # candidate up front (which would be several BGG API round-trips per game).
+    # Always a direct click a user is waiting on, so always priority.
     _item_or_none(repo, item_id)
-    details = fetch_bgg_game_details(bgg_id)
+    details = fetch_bgg_game_details(bgg_id, priority=True)
     return templates.TemplateResponse(request, "partials/bgg_thumb.html", {"image_path": details.get("image_path", "")})
 
 
@@ -335,7 +342,9 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
     # edit drawer, the missing-metadata panel, or the Add Item form, so it sidesteps
     # needing to track a different "in-progress results" container id per context.
     item = _item_or_none(repo, item_id)
-    details = fetch_bgg_game_details(bgg_id)
+    # Always a "Select" click a user is actively waiting on -- always priority,
+    # regardless of which panel/context it was opened from.
+    details = fetch_bgg_game_details(bgg_id, priority=True)
     match = {
         "Title": title,
         "Number of Players": details.get("Number of Players", ""),

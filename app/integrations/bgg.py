@@ -19,11 +19,34 @@ _HEADERS_BASE = {
 
 # BGG rate-limits per API token and returns 429 once several requests land
 # close together (observed even with ~1s client-side spacing under bulk
-# scans). Serialize all outbound calls with a minimum gap between them, and
-# retry with backoff on 429 as a safety net for whatever slips through.
-_MIN_REQUEST_GAP_SECONDS = 1.2
-_rate_lock = threading.Lock()
-_last_request_at = 0.0
+# scans). Serialize outbound calls with a minimum gap between them, and retry
+# with backoff on 429 as a safety net for whatever slips through.
+#
+# Two independent lanes share this backoff logic: the missing-metadata panel's
+# bulk background scan (~60 rows) stays on a slow lane so it doesn't itself
+# trigger rate limiting, while a real user click (Select, click-to-load
+# thumbnail) gets its own fast lane so it never sits queued behind the bulk
+# scan's minutes-long backlog -- that queuing was making "Select" feel broken
+# during a scan. Both lanes hit the same BGG token, so a click can still
+# occasionally collide and get a 429, but the per-request retry absorbs that.
+class _RateLimiter:
+    def __init__(self, min_gap_seconds: float):
+        self._lock = threading.Lock()
+        self._last_at = 0.0
+        self._min_gap = min_gap_seconds
+
+    def get(self, url: str, headers: dict, timeout: int) -> requests.Response:
+        with self._lock:
+            wait = self._min_gap - (time.time() - self._last_at)
+            if wait > 0:
+                time.sleep(wait)
+            res = requests.get(url, headers=headers, timeout=timeout)
+            self._last_at = time.time()
+            return res
+
+
+_bulk_limiter = _RateLimiter(1.2)
+_priority_limiter = _RateLimiter(0.4)
 
 
 def _headers() -> dict:
@@ -34,16 +57,12 @@ def _headers() -> dict:
     return headers
 
 
-def _throttled_get(url: str, headers: dict, timeout: int, max_retries: int = 4) -> requests.Response:
-    global _last_request_at
+def _throttled_get(url: str, headers: dict, timeout: int, max_retries: int = 4, priority: bool = False) -> requests.Response:
+    limiter = _priority_limiter if priority else _bulk_limiter
+    res = None
 
     for attempt in range(max_retries):
-        with _rate_lock:
-            wait = _MIN_REQUEST_GAP_SECONDS - (time.time() - _last_request_at)
-            if wait > 0:
-                time.sleep(wait)
-            res = requests.get(url, headers=headers, timeout=timeout)
-            _last_request_at = time.time()
+        res = limiter.get(url, headers, timeout)
 
         if res.status_code == 429:
             retry_after = res.headers.get("Retry-After")
@@ -56,7 +75,7 @@ def _throttled_get(url: str, headers: dict, timeout: int, max_retries: int = 4) 
     return res
 
 
-def fetch_bgg_game_matches(game_title: str) -> list[dict]:
+def fetch_bgg_game_matches(game_title: str, priority: bool = False) -> list[dict]:
     if not game_title or not game_title.strip():
         return []
 
@@ -67,7 +86,7 @@ def fetch_bgg_game_matches(game_title: str) -> list[dict]:
 
     try:
         exact_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame&exact=1"
-        res_exact = _throttled_get(exact_url, headers, timeout=8)
+        res_exact = _throttled_get(exact_url, headers, timeout=8, priority=priority)
         if res_exact.status_code == 200:
             root = ET.fromstring(res_exact.content)
             for item in root.findall("item"):
@@ -75,7 +94,7 @@ def fetch_bgg_game_matches(game_title: str) -> list[dict]:
 
         if len(items) < 8:
             search_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
-            res_broad = _throttled_get(search_url, headers, timeout=8)
+            res_broad = _throttled_get(search_url, headers, timeout=8, priority=priority)
             if res_broad.status_code == 200:
                 root = ET.fromstring(res_broad.content)
                 existing_ids = {i["id"] for i in items}
@@ -103,7 +122,7 @@ def _parse_search_item(item: ET.Element, fallback_name: str) -> dict:
     }
 
 
-def fetch_bgg_game_details(bgg_id: str, max_retries: int = 3) -> dict:
+def fetch_bgg_game_details(bgg_id: str, max_retries: int = 3, priority: bool = False) -> dict:
     if not bgg_id:
         return {}
 
@@ -112,7 +131,7 @@ def fetch_bgg_game_details(bgg_id: str, max_retries: int = 3) -> dict:
 
     for attempt in range(max_retries):
         try:
-            res = _throttled_get(url, headers, timeout=8)
+            res = _throttled_get(url, headers, timeout=8, priority=priority)
             if res.status_code == 202:
                 time.sleep(2 * (attempt + 1))
                 continue
