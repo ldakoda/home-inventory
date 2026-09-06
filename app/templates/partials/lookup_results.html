@@ -8,7 +8,8 @@
     {% if m.image_path %}
     <img src="{{ m.image_path }}" alt="">
     {% elif kind == "bgg" and m.get("id") %}
-    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/bgg-thumb?bgg_id={{ m.id }}" hx-trigger="click" hx-swap="innerHTML" title="Click to load image">🖼️</div>
+    {% set auto_load = panel == "missing" and loop.index0 == 0 %}
+    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/bgg-thumb?bgg_id={{ m.id }}{{ ('&panel=' + panel) if panel else '' }}" hx-trigger="{{ 'load, click' if auto_load else 'click' }}" hx-swap="innerHTML" title="Click to load image">🖼️</div>
     {% endif %}
     {% if m.Title %}<div class="lookup-title">{{ m.Title }}{% if m.get("Year Released") %} ({{ m["Year Released"] }}){% endif %}</div>{% endif %}
 

@@ -327,14 +327,19 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
 
 
 @router.get("/items/{item_id}/lookup/bgg-thumb", response_class=HTMLResponse)
-def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, repo: Repository = Depends(get_repository)):
+def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, panel: str = "", repo: Repository = Depends(get_repository)):
     # BGG's search endpoint (used above) returns no image at all, only the "thing"
     # endpoint does -- so each search result lazy-loads its own thumbnail via this
     # endpoint after the results render, rather than fetching full details for every
     # candidate up front (which would be several BGG API round-trips per game).
-    # Always a direct click a user is waiting on, so always priority.
+    # A real click is always priority. The missing-metadata panel also auto-triggers
+    # this once per row (for the top candidate only, see lookup_results.html) so box
+    # art still shows up without slowing down the candidate list itself -- that one
+    # firing ~60 times at once needs the slow/bulk lane like the rest of the scan,
+    # not the fast lane meant for a single deliberate click.
     _item_or_none(repo, item_id)
-    details = fetch_bgg_game_details(bgg_id, priority=True)
+    priority = panel != "missing"
+    details = fetch_bgg_game_details(bgg_id, priority=priority)
     return templates.TemplateResponse(request, "partials/bgg_thumb.html", {"image_path": details.get("image_path", "")})
 
 
