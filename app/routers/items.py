@@ -255,7 +255,7 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
         # since the literal retail packaging text rarely matches either database directly.
         matches = search_tmdb(cleaned_q)
         if matches:
-            notes.append(f"No OMDb match -- showing TMDb results for '{cleaned_q}' instead (poster/title only, no rating or genre).")
+            notes.append(f"No OMDb match -- showing TMDb results for '{cleaned_q}' instead. Collection hits carry only a title/poster; individual movie hits include rating, genre, runtime, and description too.")
 
     if looks_like_bundle:
         # A "Double Feature"/"Collection"/slash-separated combo (often a store-exclusive
