@@ -98,6 +98,9 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 }
 .edit-actions { display: flex; gap: 8px; margin-top: 8px; }
 
+.view-toggle { display: flex; gap: 6px; margin-top: 8px; }
+.view-toggle .btn-plain.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
 #items-list { display: flex; flex-direction: column; gap: 6px; }
 .item-row {
   display: flex;
@@ -115,6 +118,32 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 .item-main { flex: 1; min-width: 0; }
 .item-name { font-weight: 600; }
 .item-meta { font-size: 0.8rem; color: var(--text-muted); }
+
+#items-list.grid-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: 16px;
+}
+#items-list.grid-view .item-row {
+  flex-direction: column;
+  background: transparent;
+  border: none;
+  padding: 4px;
+  gap: 6px;
+}
+#items-list.grid-view .item-thumb { width: 100%; height: 100px; }
+#items-list.grid-view .item-thumb .emoji { font-size: 2.6rem; }
+#items-list.grid-view .item-main { width: 100%; text-align: center; }
+#items-list.grid-view .item-name {
+  font-size: 0.78rem;
+  font-weight: 500;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#items-list.grid-view .item-meta,
+#items-list.grid-view .item-actions { display: none; }
 
 .item-edit {
   background: var(--panel);

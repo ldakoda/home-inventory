@@ -19,6 +19,11 @@
 
   <button class="btn-primary" hx-get="/items/new" hx-target="#add-item-slot" hx-swap="innerHTML">➕ Add Item</button>
   <div id="add-item-slot"></div>
+
+  <div class="view-toggle">
+    <button type="button" id="view-list-btn" class="btn-plain" onclick="setViewMode('list')">☰ Details</button>
+    <button type="button" id="view-grid-btn" class="btn-plain" onclick="setViewMode('grid')">🔳 Icons</button>
+  </div>
 </div>
 
 <div id="items-list" hx-trigger="refreshList from:body" hx-get="/items" hx-include="#search-q,#category-filter" hx-swap="innerHTML">
@@ -33,6 +38,19 @@ function selectCategory(slug, btn) {
   htmx.trigger(document.getElementById('search-q'), 'search-now');
   refreshMissingMetaBanner();
 }
+
+function setViewMode(mode) {
+  localStorage.setItem('itemViewMode', mode);
+  applyViewMode(mode);
+}
+
+function applyViewMode(mode) {
+  document.getElementById('items-list').classList.toggle('grid-view', mode === 'grid');
+  document.getElementById('view-list-btn').classList.toggle('active', mode !== 'grid');
+  document.getElementById('view-grid-btn').classList.toggle('active', mode === 'grid');
+}
+
+applyViewMode(localStorage.getItem('itemViewMode') || 'list');
 
 function refreshMissingMetaBanner() {
   const slug = document.getElementById('category-filter').value;
