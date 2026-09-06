@@ -12,6 +12,6 @@
     <div class="item-meta"><span class="item-meta-base">{{ item.category.icon }} {{ item.category.name }}</span><span class="item-meta-extra"></span></div>
   </div>
   <div class="item-actions">
-    <button class="btn-plain" hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML">✏️ Edit</button>
+    <button class="btn-plain" hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML" title="Edit" aria-label="Edit">✏️</button>
   </div>
 </div>
