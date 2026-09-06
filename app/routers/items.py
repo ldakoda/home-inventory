@@ -294,24 +294,27 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     # background scan; anything else (the edit drawer's or Add Item form's own
     # search box) is a single deliberate click a user is actively waiting on.
     # Give the latter the fast lane so it never queues behind the former's
-    # minutes-long backlog -- see bgg.py's _bulk_limiter/_priority_limiter.
-    priority = panel != "missing"
-    raw_matches = fetch_bgg_game_matches(q, priority=priority)
+    # backlog -- see bgg.py's _bulk_limiter/_priority_limiter -- and cut the
+    # bulk scan down to one BGG call per row instead of up to three (skip the
+    # separate exact-match request, and skip the eager top-candidate image
+    # fetch below), since even fully throttled-but-reliable per-call pacing
+    # made the ~60-row scan take minutes. Every candidate still gets an image
+    # on demand via the click-to-load thumb either way.
+    is_bulk_scan = panel == "missing"
+    priority = not is_bulk_scan
+    raw_matches = fetch_bgg_game_matches(q, priority=priority, fast=is_bulk_scan)
     matches = []
     for m in raw_matches[:8]:
         matches.append({"id": m["id"], "Title": m["name"], "Year Released": m.get("year", "")})
 
     # BGG's search endpoint returns no image, only the separate "thing" endpoint does.
-    # Fetch it for just the top (most likely) match and embed it directly in this same
-    # response -- an htmx auto-trigger nested inside another auto-triggered swap (as
-    # this row's own candidates already are, inside the missing-metadata panel) turned
-    # out to fire unreliably, so this avoids a second client-side round trip entirely.
-    # bgg.py serializes and retries these calls, so the missing-metadata panel's bulk
-    # scan (up to ~60 of these at once) no longer needs to skip this to avoid BGG-side
-    # rate limiting. The remaining candidates stay image-less until clicked (see
-    # lookup_results.html's click-to-load thumb), since fetching all 8 up front would
-    # multiply BGG API calls for no benefit.
-    if matches:
+    # For a single deliberate search, fetch it for just the top (most likely) match
+    # and embed it directly in this response -- an htmx auto-trigger nested inside
+    # another auto-triggered swap turned out to fire unreliably, so this avoids a
+    # second client-side round trip. Skipped during the bulk scan (see above); every
+    # candidate there stays image-less until clicked (lookup_results.html's
+    # click-to-load thumb).
+    if matches and not is_bulk_scan:
         top_details = fetch_bgg_game_details(matches[0]["id"], priority=priority)
         if top_details.get("image_path"):
             matches[0]["image_path"] = top_details["image_path"]

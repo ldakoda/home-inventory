@@ -75,7 +75,14 @@ def _throttled_get(url: str, headers: dict, timeout: int, max_retries: int = 4, 
     return res
 
 
-def fetch_bgg_game_matches(game_title: str, priority: bool = False) -> list[dict]:
+def fetch_bgg_game_matches(game_title: str, priority: bool = False, fast: bool = False) -> list[dict]:
+    """fast=True skips the separate exact-match request and goes straight to the
+    broad search, which already includes exact matches -- verified to return the
+    same top result in the overwhelming majority of cases (the broad results are
+    sorted by closeness of length to the query, which puts a real exact match
+    first). Halves the BGG calls for the missing-metadata panel's ~60-row bulk
+    scan, which otherwise took several minutes even with per-call throttling.
+    """
     if not game_title or not game_title.strip():
         return []
 
@@ -85,12 +92,13 @@ def fetch_bgg_game_matches(game_title: str, priority: bool = False) -> list[dict
     items: list[dict] = []
 
     try:
-        exact_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame&exact=1"
-        res_exact = _throttled_get(exact_url, headers, timeout=8, priority=priority)
-        if res_exact.status_code == 200:
-            root = ET.fromstring(res_exact.content)
-            for item in root.findall("item"):
-                items.append(_parse_search_item(item, clean_title))
+        if not fast:
+            exact_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame&exact=1"
+            res_exact = _throttled_get(exact_url, headers, timeout=8, priority=priority)
+            if res_exact.status_code == 200:
+                root = ET.fromstring(res_exact.content)
+                for item in root.findall("item"):
+                    items.append(_parse_search_item(item, clean_title))
 
         if len(items) < 8:
             search_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
