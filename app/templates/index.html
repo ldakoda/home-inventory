@@ -98,14 +98,15 @@ function openViewOptions() {
   if (fields.length === 0) {
     body = '<p class="lookup-hint">This category has no extra fields to show or sort by.</p>';
   } else {
-    let radios = '<label><input type="radio" name="detailField" value="" ' + (!current.detailField ? 'checked' : '') + '> None</label>';
+    const currentFields = current.detailFields || [];
+    let checkboxes = '';
     fields.forEach(f => {
-      radios += '<label><input type="radio" name="detailField" value="' + f + '" ' + (current.detailField === f ? 'checked' : '') + '> ' + f + '</label>';
+      checkboxes += '<label><input type="checkbox" name="detailField" value="' + f + '" ' + (currentFields.includes(f) ? 'checked' : '') + '> ' + f + '</label>';
     });
     body =
-      '<p class="lookup-label">Show as detail:</p>' +
-      '<div class="view-options-list">' + radios + '</div>' +
-      '<p class="lookup-hint">Tip: once shown, tap the column header above the list to sort by it.</p>';
+      '<p class="lookup-label">Show as columns:</p>' +
+      '<div class="view-options-list">' + checkboxes + '</div>' +
+      '<p class="lookup-hint">Tip: tap a column header above the list to sort by it.</p>';
   }
 
   document.getElementById('modal-slot').innerHTML =
@@ -125,10 +126,10 @@ function openViewOptions() {
 
 function applyViewOptionsFromModal(slug) {
   const modal = document.getElementById('modal-slot');
-  const detailField = (modal.querySelector('input[name="detailField"]:checked') || {}).value || '';
+  const detailFields = Array.from(modal.querySelectorAll('input[name="detailField"]:checked')).map(el => el.value);
   // Changing what's displayed resets sort back to Name -- an old sort field that's
   // no longer shown as a column would otherwise keep silently affecting order.
-  saveViewOptions(slug, {detailField: detailField, sortField: '', sortDir: 'asc'});
+  saveViewOptions(slug, {detailFields: detailFields, sortField: '', sortDir: 'asc'});
   modal.innerHTML = '';
   renderListHeader();
   applyListDisplay();
@@ -144,36 +145,57 @@ function setSortField(slug, field) {
   applyListDisplay();
 }
 
+function makeHeaderButton(slug, field, label) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'list-header-col';
+  btn.textContent = label;
+  btn.addEventListener('click', () => setSortField(slug, field));
+  return btn;
+}
+
 function renderListHeader() {
   const headerEl = document.getElementById('list-header');
   if (!headerEl) return;
   const mode = localStorage.getItem('itemViewMode') || 'list';
   const slug = document.getElementById('category-filter').value;
 
-  if (mode !== 'list' || !CATEGORY_FIELDS[slug]) {
-    headerEl.innerHTML = '';
-    return;
-  }
+  headerEl.innerHTML = '';
+  if (mode !== 'list' || !CATEGORY_FIELDS[slug]) return;
 
   const opts = loadViewOptions(slug);
+  const detailFields = opts.detailFields || [];
   const sortField = opts.sortField || '';
   const sortDir = opts.sortDir || 'asc';
   const arrow = (field) => sortField === field ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
-  let detailCol = '';
-  if (opts.detailField) {
-    detailCol = '<button type="button" class="list-header-col" onclick="setSortField(\'' + slug + '\', \'' + opts.detailField + '\')">' + opts.detailField + arrow(opts.detailField) + '</button>';
-  }
+  const row = document.createElement('div');
+  row.className = 'item-row list-header-row';
 
-  headerEl.innerHTML =
-    '<div class="item-row list-header-row">' +
-      '<div class="item-thumb"></div>' +
-      '<div class="item-main list-header-main">' +
-        '<button type="button" class="list-header-col" onclick="setSortField(\'' + slug + '\', \'\')">Name' + arrow('') + '</button>' +
-        detailCol +
-      '</div>' +
-      '<div class="item-actions"></div>' +
-    '</div>';
+  const thumbSpacer = document.createElement('div');
+  thumbSpacer.className = 'item-thumb';
+  row.appendChild(thumbSpacer);
+
+  const main = document.createElement('div');
+  main.className = 'item-main list-header-main';
+
+  const nameCol = document.createElement('div');
+  nameCol.className = 'list-header-name-col';
+  nameCol.appendChild(makeHeaderButton(slug, '', 'Name' + arrow('')));
+  main.appendChild(nameCol);
+
+  const detailCols = document.createElement('div');
+  detailCols.className = 'list-header-cols';
+  detailFields.forEach(f => detailCols.appendChild(makeHeaderButton(slug, f, f + arrow(f))));
+  main.appendChild(detailCols);
+
+  row.appendChild(main);
+
+  const actionsSpacer = document.createElement('div');
+  actionsSpacer.className = 'item-actions';
+  row.appendChild(actionsSpacer);
+
+  headerEl.appendChild(row);
 }
 
 function applyListDisplay() {
@@ -183,14 +205,18 @@ function applyListDisplay() {
 
   rows.forEach(row => {
     const opts = loadViewOptions(row.dataset.category);
-    const extraEl = row.querySelector('.item-meta-extra');
-    if (!extraEl) return;
-    if (opts.detailField) {
-      const value = row.getAttribute('data-field-' + slugifyField(opts.detailField));
-      extraEl.textContent = value ? ' · ' + value : '';
-    } else {
-      extraEl.textContent = '';
-    }
+    const colsEl = row.querySelector('.item-extra-cols');
+    if (!colsEl) return;
+    const detailFields = opts.detailFields || [];
+    colsEl.innerHTML = '';
+    detailFields.forEach(f => {
+      const value = row.getAttribute('data-field-' + slugifyField(f)) || '';
+      const span = document.createElement('span');
+      span.className = 'item-col';
+      span.title = f;
+      span.textContent = value;
+      colsEl.appendChild(span);
+    });
   });
 
   // Attribute-based sort only makes sense within a single category (different

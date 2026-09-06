@@ -8,8 +8,11 @@
     {% endif %}
   </div>
   <div class="item-main item-clickable" hx-get="/items/{{ item.id }}/view" hx-target="#modal-slot" hx-swap="innerHTML">
-    <div class="item-name">{{ item.name }}</div>
-    <div class="item-meta"><span class="item-meta-base">{{ item.category.icon }} {{ item.category.name }}</span><span class="item-meta-extra"></span></div>
+    <div class="item-col item-col-name">
+      <div class="item-name">{{ item.name }}</div>
+      <div class="item-meta">{{ item.category.icon }} {{ item.category.name }}</div>
+    </div>
+    <div class="item-extra-cols"></div>
   </div>
   <div class="item-actions">
     <button class="btn-plain" hx-get="/items/{{ item.id }}/edit" hx-target="#item-{{ item.id }}" hx-swap="outerHTML" title="Edit" aria-label="Edit">✏️</button>
