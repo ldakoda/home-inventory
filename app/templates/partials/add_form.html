@@ -22,7 +22,15 @@
     <label>Photo URL</label>
     <input type="text" name="image_url">
     <label>Or upload an image file</label>
-    <input type="file" name="image_file" accept="image/*">
+    <div class="photo-upload-row">
+      <input type="file" id="new-item-image-file" name="image_file" accept="image/*" class="visually-hidden"
+        onchange="document.getElementById('new-item-image-file-name').textContent = this.files[0] ? this.files[0].name : 'No file chosen';">
+      <button type="button" class="btn-plain"
+        onclick="const el = document.getElementById('new-item-image-file'); el.removeAttribute('capture'); el.click();">📁 Choose File</button>
+      <button type="button" class="btn-plain camera-btn"
+        onclick="const el = document.getElementById('new-item-image-file'); el.setAttribute('capture', 'environment'); el.click();">📷 Take Picture</button>
+      <span id="new-item-image-file-name" class="file-name-label">No file chosen</span>
+    </div>
 
     <div class="edit-actions">
       <button type="submit" class="btn-primary">💾 Save</button>

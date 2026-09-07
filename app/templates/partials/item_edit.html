@@ -14,7 +14,15 @@
     <label>Photo URL</label>
     <input type="text" name="image_url" value="{{ item.image_path or '' }}">
     <label>Or upload a new image file</label>
-    <input type="file" name="image_file" accept="image/*">
+    <div class="photo-upload-row">
+      <input type="file" id="image-file-{{ item.id }}" name="image_file" accept="image/*" class="visually-hidden"
+        onchange="document.getElementById('image-file-name-{{ item.id }}').textContent = this.files[0] ? this.files[0].name : 'No file chosen';">
+      <button type="button" class="btn-plain"
+        onclick="const el = document.getElementById('image-file-{{ item.id }}'); el.removeAttribute('capture'); el.click();">📁 Choose File</button>
+      <button type="button" class="btn-plain camera-btn"
+        onclick="const el = document.getElementById('image-file-{{ item.id }}'); el.setAttribute('capture', 'environment'); el.click();">📷 Take Picture</button>
+      <span id="image-file-name-{{ item.id }}" class="file-name-label">No file chosen</span>
+    </div>
 
     <div class="edit-actions">
       <button type="submit" class="btn-primary">💾 Save Changes</button>
