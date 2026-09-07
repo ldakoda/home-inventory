@@ -34,10 +34,18 @@
   {% if item.category.slug == "games" %}
   <div class="attachments-panel-wrap">
     <p class="lookup-label">📄 Game instructions &amp; other attachments (images or PDFs):</p>
+    <p class="lookup-hint">Separate from the item's photo above -- these are extra files (rulebooks, box contents, etc.) and won't replace the cover photo.</p>
     {% include "partials/item_attachments.html" %}
     <form hx-post="/items/{{ item.id }}/attachments" hx-target="#attachments-{{ item.id }}" hx-swap="outerHTML"
-      hx-encoding="multipart/form-data" class="attachment-upload-form" hx-on::after-request="this.reset()">
-      <input type="file" name="files" accept="image/*,application/pdf" multiple>
+      hx-encoding="multipart/form-data" class="attachment-upload-form"
+      hx-on::after-request="this.reset(); document.getElementById('attachment-files-name-{{ item.id }}').textContent = 'No files chosen';">
+      <input type="file" id="attachment-files-{{ item.id }}" name="files" accept="image/*,application/pdf" multiple class="visually-hidden"
+        onchange="document.getElementById('attachment-files-name-{{ item.id }}').textContent = this.files.length ? Array.from(this.files).map(f => f.name).join(', ') : 'No files chosen';">
+      <button type="button" class="btn-plain"
+        onclick="const el = document.getElementById('attachment-files-{{ item.id }}'); el.removeAttribute('capture'); el.click();">📁 Choose Files</button>
+      <button type="button" class="btn-plain camera-btn"
+        onclick="const el = document.getElementById('attachment-files-{{ item.id }}'); el.setAttribute('capture', 'environment'); el.click();">📷 Take Picture</button>
+      <span id="attachment-files-name-{{ item.id }}" class="file-name-label">No files chosen</span>
       <button type="submit" class="btn-plain">⬆️ Upload</button>
     </form>
   </div>

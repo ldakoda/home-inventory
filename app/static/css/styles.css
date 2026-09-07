@@ -204,7 +204,7 @@ input.auto-filled, textarea.auto-filled { border-color: var(--warning); backgrou
 .file-name-label { font-size: 0.85rem; color: var(--text-muted); }
 .camera-btn { display: none; }
 @media (pointer: coarse) { .camera-btn { display: inline-flex; } }
-.attachments-panel-wrap { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.attachments-panel-wrap { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: var(--panel); }
 .attachments-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 4px; }
 .attachment-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .attachment-row a { overflow-wrap: anywhere; }
