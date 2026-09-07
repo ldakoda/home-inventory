@@ -59,7 +59,7 @@
     </div>
     <p class="lookup-hint">No automated search reliably covers store-exclusive combo packs -- "Browse Google Images" opens a real search in a new tab; copy an image's address and paste it into Photo URL above.</p>
     {% elif item.category.slug == "games" %}
-    <p class="lookup-label">🎲 Search BoardGameGeek for details &amp; box art:</p>
+    <p class="lookup-label">🎲 Search BoardGameGeek for details &amp; box art (falls back to Wikipedia for outdoor/yard games BGG doesn't cover):</p>
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
       <button type="button" class="btn-plain"

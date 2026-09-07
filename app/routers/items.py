@@ -14,6 +14,7 @@ from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.tmdb import search_tmdb
+from app.integrations.wikipedia import search_wikipedia
 from app.models import Item
 from app.repository import Repository, get_repository
 from app.storage import get_image_storage
@@ -391,6 +392,24 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
             if top_details.get(key):
                 matches[0][key] = top_details[key]
 
+    kind = "bgg"
+    note = None
+    if not matches:
+        # BGG only catalogs tabletop games -- an outdoor/yard game (Spikeball,
+        # KanJam, cornhole, Kubb) has no entry there at all. Wikipedia reliably
+        # covers these instead, but only gives prose: Description and a photo,
+        # never player count/length/age (not structured data on a Wikipedia
+        # page), so it's a fallback rather than a peer of BGG.
+        wiki_matches = search_wikipedia(q)
+        if wiki_matches:
+            matches = wiki_matches
+            kind = "wiki"
+            note = (
+                f"No BGG match -- showing Wikipedia results for '{q}' instead. "
+                "These include a description & photo but not player count, length, "
+                "or age rating (Wikipedia doesn't have that as structured data)."
+            )
+
     # Powers the edit drawer's "auto-fill empty fields from the top result" (see
     # autoFillFromSearch in index.html) the same way OMDb/TMDb/web-image matches
     # already do -- harmless for the bulk scan, which never reads this key.
@@ -400,7 +419,7 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {"item": item, "matches": matches, "kind": "bgg", "panel": panel, "target_id": _target_id(item_id, panel)},
+        {"item": item, "matches": matches, "kind": kind, "panel": panel, "target_id": _target_id(item_id, panel), "note": note},
     )
 
 
