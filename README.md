@@ -43,10 +43,19 @@ python -m uvicorn app.main:app --reload
 ## Deploying
 
 ```bash
-gcloud run deploy home-inventory --source . --region us-east1 \
+gcloud run deploy home-inventory --source . --region us-central1 \
   --allow-unauthenticated --project home-inventory-caaf7 \
   --env-vars-file secrets/cloud-run-env.yaml
 ```
+
+**`--region us-central1` is the one actually in use** (the live URL is
+`https://home-inventory-2yiug7g7na-uc.a.run.app`). This file previously said
+`us-east1`, which silently created a second, parallel Cloud Run service that
+nobody used -- every deploy to it looked successful but never reached the
+real app, since Cloud Run happily creates a brand new service for a region
+that doesn't have one yet rather than erroring. Before deploying, sanity-check
+with `gcloud run services list --project home-inventory-caaf7` that you're
+targeting the region with the highest revision number / most recent traffic.
 
 `secrets/cloud-run-env.yaml` (gitignored) holds `SECRET_KEY`,
 `AUTH_PASSWORD_HASH`, `GCP_PROJECT`, `GCS_BUCKET_NAME` — Cloud Run reads these
