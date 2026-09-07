@@ -38,20 +38,39 @@ def _match_json(match: dict) -> str:
     return json.dumps({k: v for k, v in match.items() if k != "id"})
 
 
+_SEARCH_STOP_WORDS = {"the", "a", "an", "of", "and", "&"}
+
+
 def _fuzzy_filter(items: list[Item], query: str) -> list[Item]:
     query = query.strip().lower()
     if not query:
         return items
 
     query_words = query.split()
+    # Ignoring stop words here (not in the substring check above) keeps a
+    # multi-word search meaningfully narrowing: matching on *any* single word
+    # (the old behavior) let "the" alone match nearly every title in a typical
+    # movie collection, so "the devil" returned half the library instead of
+    # narrowing down to "The Devil Wears Prada". Requiring every *meaningful*
+    # word to appear fixes that without penalizing titles that are themselves
+    # mostly stop words (falls back to the raw word list if nothing's left).
+    meaningful_words = [w for w in query_words if w not in _SEARCH_STOP_WORDS] or query_words
 
     def matches(item: Item) -> bool:
         name = item.name.lower()
         if query in name:
             return True
-        if any(word in name for word in query_words):
+        if all(word in name for word in meaningful_words):
             return True
-        return difflib.SequenceMatcher(None, query, name).ratio() >= 0.5
+        # Typo tolerance, but only for a single meaningful word, and compared
+        # against each word in the name individually rather than the name (or
+        # query) as a whole -- whole-string ratios run artificially high for
+        # short titles regardless of actual relevance (comparing "catan" to
+        # the full "Aquaman" or "Matilda" both cleared the old 0.5 threshold).
+        if len(meaningful_words) == 1:
+            word = meaningful_words[0]
+            return any(difflib.SequenceMatcher(None, word, w).ratio() >= 0.75 for w in name.split())
+        return False
 
     return [item for item in items if matches(item)]
 
