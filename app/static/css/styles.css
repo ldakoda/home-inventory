@@ -199,6 +199,13 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 }
 input.auto-filled, textarea.auto-filled { border-color: var(--warning); background: var(--warning-bg); }
 .auto-fill-marker { color: var(--warning); }
+.attachments-panel-wrap { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.attachments-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 4px; }
+.attachment-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.attachment-row a { overflow-wrap: anywhere; }
+.attachment-row .btn-small { padding: 2px 6px; font-size: 0.8rem; line-height: 1; }
+.attachments-empty { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 8px; }
+.attachment-upload-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .lookup-panel { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
 .lookup-label { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 6px; }
 .lookup-search-row { display: flex; gap: 8px; align-items: flex-start; flex-wrap: wrap; }

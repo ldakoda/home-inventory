@@ -23,6 +23,18 @@
     </div>
   </form>
 
+  {% if item.category.slug == "games" %}
+  <div class="attachments-panel-wrap">
+    <p class="lookup-label">📄 Game instructions &amp; other attachments (images or PDFs):</p>
+    {% include "partials/item_attachments.html" %}
+    <form hx-post="/items/{{ item.id }}/attachments" hx-target="#attachments-{{ item.id }}" hx-swap="outerHTML"
+      hx-encoding="multipart/form-data" class="attachment-upload-form" hx-on::after-request="this.reset()">
+      <input type="file" name="files" accept="image/*,application/pdf" multiple>
+      <button type="submit" class="btn-plain">⬆️ Upload</button>
+    </form>
+  </div>
+  {% endif %}
+
   <div class="lookup-panel">
     {% if item.category.slug == "movies" %}
     <p class="lookup-label">🎬 Search OMDb for metadata &amp; poster:</p>

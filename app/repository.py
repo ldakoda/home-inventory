@@ -35,6 +35,7 @@ def _item_from_doc(doc, category: Category | None) -> Item:
         name=d["name"],
         image_path=d.get("image_path"),
         attributes=d.get("attributes", {}),
+        attachments=d.get("attachments", []),
         created_at=d.get("created_at"),
         updated_at=d.get("updated_at"),
         category=category,
@@ -107,6 +108,19 @@ class Repository:
 
     def delete_item(self, item_id: str) -> None:
         self.db.collection(ITEMS).document(item_id).delete()
+
+    def add_attachment(self, item_id: str, attachment: dict) -> Item | None:
+        item = self.get_item(item_id)
+        if item is None:
+            return None
+        return self.update_item(item_id, attachments=[*item.attachments, attachment])
+
+    def remove_attachment(self, item_id: str, attachment_id: str) -> Item | None:
+        item = self.get_item(item_id)
+        if item is None:
+            return None
+        remaining = [a for a in item.attachments if a.get("id") != attachment_id]
+        return self.update_item(item_id, attachments=remaining)
 
 
 def get_repository() -> Repository:

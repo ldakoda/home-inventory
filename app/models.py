@@ -26,6 +26,7 @@ class Item:
     name: str
     image_path: str | None
     attributes: dict
+    attachments: list[dict] = field(default_factory=list)
     created_at: datetime | None = None
     updated_at: datetime | None = None
     category: Category | None = None

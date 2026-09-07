@@ -1,0 +1,19 @@
+<div id="attachments-{{ item.id }}" class="attachments-panel">
+  {% if item.attachments %}
+  <ul class="attachments-list">
+    {% for a in item.attachments %}
+    <li class="attachment-row">
+      <a href="{{ a.url }}" target="_blank" rel="noopener">
+        {{ '🖼️' if a.content_type.startswith('image/') else '📄' }} {{ a.filename }}
+      </a>
+      <button type="button" class="btn-plain btn-small"
+        hx-delete="/items/{{ item.id }}/attachments/{{ a.id }}"
+        hx-target="#attachments-{{ item.id }}" hx-swap="outerHTML"
+        hx-confirm="Remove '{{ a.filename }}'?">🗑️</button>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="attachments-empty">No attachments yet.</p>
+  {% endif %}
+</div>

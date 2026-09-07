@@ -1,6 +1,7 @@
 import difflib
 import json
 import re
+import uuid
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -269,6 +270,37 @@ def delete_item(item_id: str, repo: Repository = Depends(get_repository)):
     _get_item_or_404(repo, item_id)
     repo.delete_item(item_id)
     return Response("", status_code=200)
+
+
+@router.post("/items/{item_id}/attachments", response_class=HTMLResponse)
+async def upload_attachments(request: Request, item_id: str, repo: Repository = Depends(get_repository)):
+    item = _get_item_or_404(repo, item_id)
+    form = await request.form()
+    files = [f for f in form.getlist("files") if isinstance(f, UploadFile) and f.filename]
+
+    storage = get_image_storage()
+    for upload in files:
+        url = storage.save(upload)
+        item = repo.add_attachment(item_id, {
+            "id": uuid.uuid4().hex,
+            "filename": upload.filename,
+            "url": url,
+            "content_type": upload.content_type or "",
+        })
+
+    return templates.TemplateResponse(request, "partials/item_attachments.html", {"item": item})
+
+
+@router.delete("/items/{item_id}/attachments/{attachment_id}", response_class=HTMLResponse)
+def delete_attachment(
+    request: Request, item_id: str, attachment_id: str, repo: Repository = Depends(get_repository)
+):
+    item = _get_item_or_404(repo, item_id)
+    attachment = next((a for a in item.attachments if a.get("id") == attachment_id), None)
+    if attachment:
+        get_image_storage().delete(attachment["url"])
+    item = repo.remove_attachment(item_id, attachment_id)
+    return templates.TemplateResponse(request, "partials/item_attachments.html", {"item": item})
 
 
 def _target_id(item_id: str, panel: str) -> str:
