@@ -59,6 +59,10 @@ def _fuzzy_filter(items: list[Item], query: str) -> list[Item]:
 _TRAILING_PAREN = re.compile(r"\s*\([^)]*\)\s*$")
 _COLLECTION_SUFFIX = re.compile(r"\s*\d*-?\s*movies?\s+collection\s*$", re.IGNORECASE)
 _PACKAGING_WORD = re.compile(r"\s+(?:collection|trilogy|double feature)\s*$", re.IGNORECASE)
+_TRAILING_PAREN_LIST = re.compile(r"\(([^()]+)\)\s*$")
+_ANNIVERSARY_SUFFIX = re.compile(r"\s+\d+(?:st|nd|rd|th)\s+anniversary\s*$", re.IGNORECASE)
+_SEASON_RANGE_SUFFIX = re.compile(r":?\s*seasons?\s+[\d]+\s*[\-–—]\s*[\d]+\s*$", re.IGNORECASE)
+_COMPLETE_SERIES_SUFFIX = re.compile(r"\s*[\-–—]\s*the complete series\s*$", re.IGNORECASE)
 
 
 def _clean_movie_query(raw: str) -> str:
@@ -70,11 +74,27 @@ def _clean_movie_query(raw: str) -> str:
     label) or box-set word ("N-Movie(s) Collection", "Collection", "Trilogy",
     "Double Feature") until neither pattern matches anymore.
     """
-    q = raw.split(" / ")[0].strip()
+    q = raw.strip()
+
+    # "3 Film Collection (American Sniper / Gran Torino / Sully)" or "4 Film
+    # Favorites: Girls Night Collection (27 Dresses / Bride Wars / ...)" list the
+    # actual included films in a trailing parenthetical rather than before it --
+    # naively splitting the whole string on " / " first (as below) mangles these
+    # into "3 Film Collection (American Sniper", which matches nothing. Pull the
+    # first title out of that parenthetical instead when this pattern applies
+    # (a trailing "(...)" whose contents are themselves slash-separated).
+    paren_list = _TRAILING_PAREN_LIST.search(q)
+    if paren_list and " / " in paren_list.group(1) and " / " not in q[: paren_list.start()]:
+        return paren_list.group(1).split(" / ")[0].strip()
+
+    q = q.split(" / ")[0].strip()
     while True:
         stripped = _TRAILING_PAREN.sub("", q).strip()
         stripped = _COLLECTION_SUFFIX.sub("", stripped).strip()
         stripped = _PACKAGING_WORD.sub("", stripped).strip()
+        stripped = _ANNIVERSARY_SUFFIX.sub("", stripped).strip()
+        stripped = _SEASON_RANGE_SUFFIX.sub("", stripped).strip()
+        stripped = _COMPLETE_SERIES_SUFFIX.sub("", stripped).strip()
         if stripped == q:
             break
         q = stripped

@@ -31,7 +31,11 @@ def search_tmdb(query: str, num_results: int = 8) -> list[dict]:
             timeout=6,
         )
         if res.status_code == 200:
-            for c in res.json().get("results", []):
+            # A generic one- or two-word title (e.g. "Big", "Tag", "Barbie") can
+            # match a long tail of loosely-related TMDb "collections" -- capped
+            # well below num_results so the movie search below always still gets
+            # to run instead of being skipped because these alone filled it up.
+            for c in res.json().get("results", [])[:3]:
                 if c.get("poster_path"):
                     results.append({
                         "Title": c.get("name", ""),
@@ -65,6 +69,31 @@ def search_tmdb(query: str, num_results: int = 8) -> list[dict]:
                     results.append(entry)
         except requests.RequestException:
             logger.exception("TMDb movie search failed for %r", query)
+
+    # A season boxset ("Monk: Seasons 1-4", "Avatar: The Last Airbender - The
+    # Complete Series") is a TV show, not a movie or collection -- neither of the
+    # searches above will ever find it. Only try this once those have both come
+    # up empty, since it's a distinct API section with its own per-title lookup.
+    if not results:
+        try:
+            res = requests.get(
+                "https://api.themoviedb.org/3/search/tv",
+                params={"api_key": settings.tmdb_api_key, "query": query},
+                timeout=6,
+            )
+            if res.status_code == 200:
+                for t in res.json().get("results", [])[:num_results]:
+                    entry = {
+                        "Title": t.get("name", ""),
+                        "Year Released": (t.get("first_air_date") or "")[:4],
+                        "Type": "TV Series",
+                        "image_path": f"{POSTER_BASE}{t['poster_path']}" if t.get("poster_path") else "",
+                    }
+                    if t.get("id"):
+                        entry.update(_fetch_tv_details(t["id"], settings.tmdb_api_key))
+                    results.append(entry)
+        except requests.RequestException:
+            logger.exception("TMDb TV search failed for %r", query)
 
     return results[:num_results]
 
@@ -105,5 +134,39 @@ def _fetch_movie_details(movie_id: int, api_key: str) -> dict:
                 break
     except requests.RequestException:
         logger.exception("TMDb release_dates failed for id=%s", movie_id)
+
+    return details
+
+
+def _fetch_tv_details(tv_id: int, api_key: str) -> dict:
+    """Same idea as _fetch_movie_details, but for the TV side of the API -- a
+    season boxset's Rating/Genre/Description come from the show, not an episode
+    runtime (TV episode length doesn't map onto a single "Length of Movie" field
+    the way a movie's runtime does, so this deliberately leaves that field blank).
+    """
+    details: dict = {}
+    try:
+        res = requests.get(f"https://api.themoviedb.org/3/tv/{tv_id}", params={"api_key": api_key}, timeout=6)
+        if res.status_code == 200:
+            data = res.json()
+            genres = [g["name"] for g in data.get("genres", []) if g.get("name")]
+            if genres:
+                details["Genre"] = ", ".join(genres)
+            if data.get("overview"):
+                details["Description"] = data["overview"]
+    except requests.RequestException:
+        logger.exception("TMDb TV details failed for id=%s", tv_id)
+
+    try:
+        res = requests.get(
+            f"https://api.themoviedb.org/3/tv/{tv_id}/content_ratings", params={"api_key": api_key}, timeout=6
+        )
+        if res.status_code == 200:
+            for country in res.json().get("results", []):
+                if country.get("iso_3166_1") == "US" and country.get("rating"):
+                    details["Rating"] = country["rating"]
+                    break
+    except requests.RequestException:
+        logger.exception("TMDb TV content_ratings failed for id=%s", tv_id)
 
     return details
