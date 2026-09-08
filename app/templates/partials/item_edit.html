@@ -13,6 +13,18 @@
       <option value="Digital">
       <option value="Physical &amp; Digital">
     </datalist>
+    {% elif field == "Digital Platforms" and item.category.slug == "video-games" %}
+    <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}" list="digital-platform-options-vg" placeholder="e.g. Steam, PSN">
+    <datalist id="digital-platform-options-vg">
+      <option value="Steam">
+      <option value="Nintendo eShop">
+      <option value="PlayStation Store">
+      <option value="Xbox Store">
+      <option value="Epic Games Store">
+      <option value="GOG">
+      <option value="Battle.net">
+      <option value="EA App">
+    </datalist>
     {% elif field == "Digital Platforms" %}
     <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}" list="digital-platform-options" placeholder="e.g. Vudu, Apple TV">
     <datalist id="digital-platform-options">
@@ -26,6 +38,22 @@
       <option value="Paramount+">
       <option value="Peacock">
       <option value="Kaleidescape">
+    </datalist>
+    {% elif field == "Platform" %}
+    <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}" list="console-platform-options" placeholder="e.g. Nintendo Switch">
+    <datalist id="console-platform-options">
+      <option value="Nintendo Switch">
+      <option value="Nintendo Switch 2">
+      <option value="PlayStation 5">
+      <option value="PlayStation 4">
+      <option value="Xbox Series X|S">
+      <option value="Xbox One">
+      <option value="PC">
+      <option value="Steam Deck">
+      <option value="Wii U">
+      <option value="Wii">
+      <option value="Nintendo 3DS">
+      <option value="PS Vita">
     </datalist>
     {% else %}
     <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}">
