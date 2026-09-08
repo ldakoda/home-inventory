@@ -6,6 +6,27 @@
     <label>{{ field }}{{ ' *' if field == item.category.primary_field else '' }}</label>
     {% if field == "Description" %}
     <textarea name="{{ field }}" rows="4">{{ item.attributes.get(field, '') }}</textarea>
+    {% elif field == "Ownership" %}
+    <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}" list="ownership-options">
+    <datalist id="ownership-options">
+      <option value="Physical">
+      <option value="Digital">
+      <option value="Physical &amp; Digital">
+    </datalist>
+    {% elif field == "Digital Platforms" %}
+    <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}" list="digital-platform-options" placeholder="e.g. Vudu, Apple TV">
+    <datalist id="digital-platform-options">
+      <option value="Vudu">
+      <option value="Apple TV">
+      <option value="Google Play">
+      <option value="Amazon Prime Video">
+      <option value="Movies Anywhere">
+      <option value="Disney+">
+      <option value="Max">
+      <option value="Paramount+">
+      <option value="Peacock">
+      <option value="Kaleidescape">
+    </datalist>
     {% else %}
     <input type="text" name="{{ field }}" value="{{ item.attributes.get(field, '') }}">
     {% endif %}

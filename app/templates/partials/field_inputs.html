@@ -1,4 +1,27 @@
 {% for field in category.fields %}
 <label>{{ field }}{{ ' *' if field == category.primary_field else '' }}</label>
+{% if field == "Ownership" %}
+<input type="text" name="{{ field }}" value="{{ values.get(field, '') if values else '' }}" list="ownership-options">
+<datalist id="ownership-options">
+  <option value="Physical">
+  <option value="Digital">
+  <option value="Physical &amp; Digital">
+</datalist>
+{% elif field == "Digital Platforms" %}
+<input type="text" name="{{ field }}" value="{{ values.get(field, '') if values else '' }}" list="digital-platform-options" placeholder="e.g. Vudu, Apple TV">
+<datalist id="digital-platform-options">
+  <option value="Vudu">
+  <option value="Apple TV">
+  <option value="Google Play">
+  <option value="Amazon Prime Video">
+  <option value="Movies Anywhere">
+  <option value="Disney+">
+  <option value="Max">
+  <option value="Paramount+">
+  <option value="Peacock">
+  <option value="Kaleidescape">
+</datalist>
+{% else %}
 <input type="text" name="{{ field }}" value="{{ values.get(field, '') if values else '' }}">
+{% endif %}
 {% endfor %}
