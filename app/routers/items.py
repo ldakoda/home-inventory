@@ -13,6 +13,7 @@ from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
 from app.integrations.omdb import fetch_omdb_movie_matches
+from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
 from app.integrations.wikipedia import search_wikipedia
 from app.models import Item
@@ -474,6 +475,19 @@ def lookup_web_images(request: Request, item_id: str, q: str, repo: Repository =
         request,
         "partials/lookup_results.html",
         {"item": item, "matches": matches, "kind": "image", "target_id": _target_id(item_id, ""), "panel": ""},
+    )
+
+
+@router.get("/items/{item_id}/lookup/rawg", response_class=HTMLResponse)
+def lookup_rawg(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
+    item = _item_or_none(repo, item_id)
+    matches = search_rawg(q)
+    for m in matches:
+        m["match_json"] = _match_json(m)
+    return templates.TemplateResponse(
+        request,
+        "partials/lookup_results.html",
+        {"item": item, "matches": matches, "kind": "rawg", "target_id": _target_id(item_id, panel), "panel": panel},
     )
 
 

@@ -128,6 +128,20 @@
         🖼️ Browse Google Images
       </button>
     </div>
+    {% elif item.category.slug == "video-games" %}
+    <p class="lookup-label">🕹️ Search RAWG for details &amp; cover art:</p>
+    <div class="lookup-search-row">
+      <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
+      <button type="button" class="btn-plain"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/rawg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
+        🔍 Search RAWG
+      </button>
+      <button type="button" class="btn-plain"
+        onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
+        🖼️ Browse Google Images
+      </button>
+    </div>
+    <p class="lookup-hint">Number of Players is best-effort (derived from RAWG's tags, e.g. "Singleplayer"/"Co-op") -- it's not exact player counts like a board game's box.</p>
     {% else %}
     <p class="lookup-label">🌐 Search the web for a product photo:</p>
     <div class="lookup-search-row">

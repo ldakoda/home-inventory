@@ -260,7 +260,7 @@ function searchNewItemMetadata(btn) {
     if (results) results.innerHTML = '<p class="empty">Type a ' + primaryField + ' above first.</p>';
     return;
   }
-  const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : 'web-images';
+  const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : slug === 'video-games' ? 'rawg' : 'web-images';
   htmx.ajax('GET', '/items/new/lookup/' + path + '?q=' + encodeURIComponent(q), {target: '#new-item-search-results', swap: 'innerHTML'});
 }
 
