@@ -58,7 +58,10 @@ def search_rawg(query: str, num_results: int = 5) -> list[dict]:
 
     matches = []
     for g in raw_results:
-        genres = [x["name"] for x in g.get("genres", []) if x.get("name")]
+        # RAWG can send an explicit `null` for genres/tags on some entries
+        # (not just omit the key) -- dict.get's default only kicks in when the
+        # key is absent, so a bare `or []` is needed to catch the null case too.
+        genres = [x["name"] for x in (g.get("genres") or []) if x.get("name")]
         entry = {
             "Title": g.get("name", ""),
             "Year Released": (g.get("released") or "")[:4],
@@ -69,7 +72,7 @@ def search_rawg(query: str, num_results: int = 5) -> list[dict]:
         esrb = g.get("esrb_rating")
         if esrb and esrb.get("name"):
             entry["ESRB Rating"] = esrb["name"]
-        players = _players_from_tags(g.get("tags", []))
+        players = _players_from_tags(g.get("tags") or [])
         if players:
             entry["Number of Players"] = players
         if g.get("id"):
@@ -91,7 +94,7 @@ def _fetch_description(game_id: int, api_key: str) -> str:
     try:
         res = requests.get(f"{BASE_URL}/{game_id}", params={"key": api_key}, timeout=8)
         if res.status_code == 200:
-            return res.json().get("description_raw", "").strip()
+            return (res.json().get("description_raw") or "").strip()
     except requests.RequestException:
         logger.exception("RAWG detail fetch failed for id=%s", game_id)
     return ""
