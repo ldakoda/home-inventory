@@ -481,7 +481,8 @@ def lookup_web_images(request: Request, item_id: str, q: str, repo: Repository =
 @router.get("/items/{item_id}/lookup/rawg", response_class=HTMLResponse)
 def lookup_rawg(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _item_or_none(repo, item_id)
-    matches = search_rawg(q)
+    platform_hint = item.attributes.get("Platform", "") if item else ""
+    matches = search_rawg(q, platform_hint=platform_hint)
     for m in matches:
         m["match_json"] = _match_json(m)
     return templates.TemplateResponse(

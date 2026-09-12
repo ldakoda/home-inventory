@@ -32,12 +32,20 @@ def _players_from_tags(tags: list[dict]) -> str:
     return ", ".join(found)
 
 
-def search_rawg(query: str, num_results: int = 5) -> list[dict]:
+def search_rawg(query: str, num_results: int = 5, platform_hint: str = "") -> list[dict]:
     """Video-game metadata source -- RAWG is the free option with the best
     coverage for this (IGDB needs a Twitch developer app; MobyGames' API is
     paid). Cover art/genre/ESRB rating/release year come straight from the
     search results; only the full description needs a second per-candidate
     call, same two-step pattern OMDb/BGG already use.
+
+    platform_hint (e.g. "PlayStation 4"): a rebooted franchise entry often
+    shares its exact title with an older game in the series (the 2018 PS4
+    "God of War" vs. the 2005 PS2 original both being named "God of War") --
+    RAWG's relevance ranking doesn't know which one an owned copy actually
+    is, so when a platform is already known, candidates that carry it are
+    moved to the front (stable otherwise) rather than blindly trusting
+    result order.
     """
     settings = get_settings()
     if not settings.rawg_api_key or not query.strip():
@@ -55,6 +63,13 @@ def search_rawg(query: str, num_results: int = 5) -> list[dict]:
     except requests.RequestException:
         logger.exception("RAWG search failed for %r", query)
         return []
+
+    if platform_hint.strip():
+        hint = platform_hint.strip().lower()
+        def carries_hint(g):
+            names = [p.get("platform", {}).get("name", "").lower() for p in (g.get("platforms") or [])]
+            return any(hint in n for n in names)
+        raw_results = sorted(raw_results, key=lambda g: not carries_hint(g))
 
     matches = []
     for g in raw_results:
