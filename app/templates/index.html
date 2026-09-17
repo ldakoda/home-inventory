@@ -455,5 +455,15 @@ function refreshMissingMetaBanner() {
 document.body.addEventListener('refreshList', refreshMissingMetaBanner);
 document.body.addEventListener('refreshMissingMeta', refreshMissingMetaBanner);
 refreshMissingMetaBanner();
+
+function refreshTabCounts() {
+  fetch('/categories/tab-counts').then(r => r.json()).then(counts => {
+    for (const [slug, count] of Object.entries(counts)) {
+      const el = document.getElementById('tab-count-' + slug);
+      if (el) el.textContent = count;
+    }
+  });
+}
+document.body.addEventListener('refreshList', refreshTabCounts);
 </script>
 {% endblock %}

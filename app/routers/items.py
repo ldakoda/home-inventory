@@ -153,6 +153,7 @@ def index(request: Request, repo: Repository = Depends(get_repository)):
     # picker -- primary_field is excluded since that's already the item's name/title.
     category_fields = {c.slug: [f for f in c.fields if f != c.primary_field] for c in categories}
     category_names = {c.slug: f"{c.icon} {c.name}" for c in categories}
+    category_counts = repo.count_items_by_category()
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -163,6 +164,7 @@ def index(request: Request, repo: Repository = Depends(get_repository)):
             "q": "",
             "category_fields_json": json.dumps(category_fields),
             "category_names_json": json.dumps(category_names),
+            "category_counts": category_counts,
         },
     )
 

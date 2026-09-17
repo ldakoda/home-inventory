@@ -70,6 +70,18 @@ class Repository:
 
     # -- items ----------------------------------------------------------
 
+    def count_items_by_category(self) -> dict[str, int]:
+        """Per-category item counts for the tab bar -- a single unhydrated pass
+        over the items collection rather than a list_items() call per category
+        (which would each re-join category docs it doesn't need for a count).
+        """
+        counts: dict[str, int] = {}
+        for doc in self.db.collection(ITEMS).stream():
+            slug = doc.to_dict().get("category_slug")
+            if slug:
+                counts[slug] = counts.get(slug, 0) + 1
+        return counts
+
     def list_items(self, category_slug: str | None = None) -> list[Item]:
         categories = {c.slug: c for c in self.list_categories()}
 

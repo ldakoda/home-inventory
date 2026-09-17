@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from app.deps import require_auth
@@ -17,6 +17,13 @@ def slugify(name: str) -> str:
 @router.get("/categories/new", response_class=HTMLResponse)
 def new_category_form(request: Request):
     return templates.TemplateResponse(request, "partials/category_form.html", {})
+
+
+@router.get("/categories/tab-counts")
+def tab_counts(repo: Repository = Depends(get_repository)):
+    counts = repo.count_items_by_category()
+    counts["all"] = sum(counts.values())
+    return JSONResponse(counts)
 
 
 @router.post("/categories", response_class=HTMLResponse)
@@ -57,5 +64,5 @@ def create_category(
     return templates.TemplateResponse(
         request,
         "partials/category_tabs.html",
-        {"categories": categories, "active_category": slug, "oob": True},
+        {"categories": categories, "active_category": slug, "oob": True, "category_counts": repo.count_items_by_category()},
     )
