@@ -1,4 +1,5 @@
 import logging
+import threading
 import time
 
 import requests
@@ -11,24 +12,30 @@ COVER_ART_URL = "https://coverartarchive.org/release"
 # MusicBrainz's usage policy requires a descriptive User-Agent and caps
 # anonymous requests at ~1/second -- a stricter limit than any other
 # integration here, since a single "search" resolves into a chain of
-# release-group -> release -> tracklist -> cover-art calls (see search_musicbrainz).
+# release-group -> release -> tracklist -> cover-art calls. A lock (not just
+# a bare timestamp) matters here specifically because, unlike the other
+# integrations, cover art for the non-top candidates now loads via separate
+# concurrent browser requests (see lookup_musicbrainz_thumb) that can hit
+# this from multiple threads at once.
 _HEADERS = {"User-Agent": "HomeInventoryApp/1.0 (https://github.com/ldakoda/home-inventory)"}
 _MIN_GAP_SECONDS = 1.1
+_lock = threading.Lock()
 _last_request_at = 0.0
 
 
 def _throttled_get(url: str, params: dict) -> requests.Response | None:
     global _last_request_at
-    wait = _MIN_GAP_SECONDS - (time.time() - _last_request_at)
-    if wait > 0:
-        time.sleep(wait)
-    try:
-        res = requests.get(url, params=params, headers=_HEADERS, timeout=10)
-    except requests.RequestException:
-        logger.exception("MusicBrainz request failed for %s", url)
-        return None
-    finally:
-        _last_request_at = time.time()
+    with _lock:
+        wait = _MIN_GAP_SECONDS - (time.time() - _last_request_at)
+        if wait > 0:
+            time.sleep(wait)
+        try:
+            res = requests.get(url, params=params, headers=_HEADERS, timeout=10)
+        except requests.RequestException:
+            logger.exception("MusicBrainz request failed for %s", url)
+            return None
+        finally:
+            _last_request_at = time.time()
     return res if res.status_code == 200 else None
 
 
@@ -37,10 +44,11 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
     RAWG for video games), but its data model is release-group (the abstract
     album) -> release (a specific pressing/format) -> tracks -- there's no
     single call that returns a tracklist, so this is a chain of throttled
-    requests. Only the top candidate gets that full chain (Track List,
-    Description-free Genre, cover art via the companion Cover Art Archive);
-    the rest stay at the cheap release-group level, same "top result gets full
-    detail, others are cheap" pattern bgg.py already uses.
+    requests. Only the top candidate gets that full chain eagerly (Genre,
+    Track List, cover art); the rest keep their release-group id (as "id",
+    same convention bgg.py uses) so the results page can lazy-load just their
+    cover art in the background via lookup_musicbrainz_thumb, same idea as
+    bgg.py's click-to-load thumbnails.
     """
     query = query.strip()
     if not query:
@@ -58,20 +66,60 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
             "Title": g.get("title", ""),
             "Artist": ", ".join(artists),
             "Year Released": (g.get("first-release-date") or "")[:4],
-            "_rg_id": g.get("id", ""),
+            "id": g.get("id", ""),
         })
 
     if matches:
         _fill_top_candidate_details(matches[0])
 
-    for m in matches:
-        m.pop("_rg_id", None)
-
     return matches
 
 
+def _pick_release(rg_id: str) -> dict | None:
+    """The release-group is the abstract album; an actual tracklist/cover art
+    lives on one of its releases (a specific pressing). Prefer a genuine vinyl
+    pressing when one's listed; otherwise fall back to whichever release is
+    listed first (often the original pressing for older albums, which was
+    vinyl anyway before other formats existed).
+    """
+    releases_res = _throttled_get(f"{BASE_URL}/release-group/{rg_id}", {"inc": "releases+media", "fmt": "json"})
+    if releases_res is None:
+        return None
+    releases = releases_res.json().get("releases", []) or []
+    if not releases:
+        return None
+
+    def is_vinyl(release: dict) -> bool:
+        return any("vinyl" in (m.get("format") or "").lower() for m in release.get("media", []))
+
+    return next((r for r in releases if is_vinyl(r)), releases[0])
+
+
+def fetch_cover_art(rg_id: str) -> str:
+    """Cover art only, for lazy-loading a non-top search result's thumbnail
+    without paying for the full genre+tracklist chain those don't need yet.
+    """
+    if not rg_id:
+        return ""
+    release = _pick_release(rg_id)
+    if release is None:
+        return ""
+    return _cover_art_for_release(release["id"])
+
+
+def _cover_art_for_release(release_id: str) -> str:
+    cover_res = _throttled_get(f"{COVER_ART_URL}/{release_id}", {})
+    if cover_res is None:
+        return ""
+    images = cover_res.json().get("images", []) or []
+    front = next((i for i in images if i.get("front")), images[0] if images else None)
+    if not front:
+        return ""
+    return front.get("thumbnails", {}).get("large") or front.get("image", "")
+
+
 def _fill_top_candidate_details(match: dict) -> None:
-    rg_id = match.pop("_rg_id", "")
+    rg_id = match.get("id", "")
     if not rg_id:
         return
 
@@ -82,20 +130,9 @@ def _fill_top_candidate_details(match: dict) -> None:
         if names:
             match["Genre"] = ", ".join(n.title() for n in names)
 
-    releases_res = _throttled_get(f"{BASE_URL}/release-group/{rg_id}", {"inc": "releases+media", "fmt": "json"})
-    if releases_res is None:
+    release = _pick_release(rg_id)
+    if release is None:
         return
-    releases = releases_res.json().get("releases", []) or []
-    if not releases:
-        return
-
-    # Prefer an actual vinyl pressing's tracklist when one exists; fall back to
-    # the first-listed release (often the original pressing for older albums,
-    # which was vinyl anyway before other formats existed).
-    def is_vinyl(release: dict) -> bool:
-        return any("vinyl" in (m.get("format") or "").lower() for m in release.get("media", []))
-
-    release = next((r for r in releases if is_vinyl(r)), releases[0])
     release_id = release["id"]
 
     tracks_res = _throttled_get(f"{BASE_URL}/release/{release_id}", {"inc": "recordings", "fmt": "json"})
@@ -111,9 +148,6 @@ def _fill_top_candidate_details(match: dict) -> None:
         if track_lines:
             match["Track List"] = "\n".join(track_lines)
 
-    cover_res = _throttled_get(f"{COVER_ART_URL}/{release_id}", {})
-    if cover_res is not None:
-        images = cover_res.json().get("images", []) or []
-        front = next((i for i in images if i.get("front")), images[0] if images else None)
-        if front:
-            match["image_path"] = front.get("thumbnails", {}).get("large") or front.get("image", "")
+    image = _cover_art_for_release(release_id)
+    if image:
+        match["image_path"] = image

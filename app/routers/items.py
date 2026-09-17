@@ -12,7 +12,7 @@ from starlette.datastructures import UploadFile
 from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
-from app.integrations.musicbrainz import search_musicbrainz
+from app.integrations.musicbrainz import fetch_cover_art, search_musicbrainz
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
@@ -441,7 +441,7 @@ def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, panel: str = "
     _item_or_none(repo, item_id)
     priority = panel != "missing"
     details = fetch_bgg_game_details(bgg_id, priority=priority)
-    return templates.TemplateResponse(request, "partials/bgg_thumb.html", {"image_path": details.get("image_path", "")})
+    return templates.TemplateResponse(request, "partials/lazy_thumb.html", {"image_path": details.get("image_path", "")})
 
 
 @router.get("/items/{item_id}/lookup/bgg-details", response_class=HTMLResponse)
@@ -506,6 +506,19 @@ def lookup_musicbrainz(request: Request, item_id: str, q: str, panel: str = "", 
         "partials/lookup_results.html",
         {"item": item, "matches": matches, "kind": "musicbrainz", "target_id": _target_id(item_id, panel), "panel": panel},
     )
+
+
+@router.get("/items/{item_id}/lookup/musicbrainz-thumb", response_class=HTMLResponse)
+def lookup_musicbrainz_thumb(request: Request, item_id: str, rg_id: str, repo: Repository = Depends(get_repository)):
+    # Only the top search result gets cover art eagerly (see search_musicbrainz --
+    # each candidate's art costs 2 more throttled MusicBrainz/Cover-Art-Archive
+    # calls). The rest lazy-load their own art via this endpoint once the results
+    # are already on screen, same click-to-load idea bgg.py uses for box art --
+    # except these auto-load (MusicBrainz's 1/sec limit already paces them out
+    # visibly one at a time, so there's no bulk-scan case here to gate behind a click).
+    _item_or_none(repo, item_id)
+    image_path = fetch_cover_art(rg_id)
+    return templates.TemplateResponse(request, "partials/lazy_thumb.html", {"image_path": image_path})
 
 
 @router.get("/categories/{slug}/new-lookup-panel", response_class=HTMLResponse)
