@@ -100,7 +100,8 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 }
 .edit-actions { display: flex; gap: 8px; margin-top: 8px; }
 
-.view-toggle { display: flex; gap: 6px; margin-top: 8px; }
+.toolbar-actions-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.view-toggle { display: flex; gap: 6px; flex-wrap: wrap; }
 .view-toggle .btn-plain.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 
 /* Details view is styled to resemble a Windows Explorer file list: flat rows
@@ -233,6 +234,7 @@ input.auto-filled, textarea.auto-filled { border-color: var(--warning); backgrou
 .lookup-thumb-lazy { display: flex; align-items: center; justify-content: center; font-size: 1.4rem; cursor: pointer; opacity: 0.6; }
 .lookup-thumb-lazy:hover { opacity: 1; }
 .lookup-title { font-size: 0.8rem; margin-bottom: 6px; }
+.lookup-artist { font-size: 0.75rem; color: var(--text-muted); margin: -4px 0 6px; }
 
 #modal-slot:empty { display: none; }
 .modal-backdrop {

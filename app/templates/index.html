@@ -17,14 +17,15 @@
   <div id="missing-metadata-banner"></div>
   <div id="missing-metadata-panel-slot"></div>
 
-  <button class="btn-primary" hx-get="/items/new" hx-target="#add-item-slot" hx-swap="innerHTML">➕ Add Item</button>
-  <div id="add-item-slot"></div>
-
-  <div class="view-toggle">
-    <button type="button" id="view-list-btn" class="btn-plain" onclick="setViewMode('list')">☰ Details</button>
-    <button type="button" id="view-grid-btn" class="btn-plain" onclick="setViewMode('grid')">🔳 Icons</button>
-    <button type="button" class="btn-plain" onclick="openViewOptions()">⚙️ Details &amp; Sort</button>
+  <div class="toolbar-actions-row">
+    <button class="btn-primary" hx-get="/items/new" hx-target="#add-item-slot" hx-swap="innerHTML">➕ Add Item</button>
+    <div class="view-toggle">
+      <button type="button" id="view-list-btn" class="btn-plain" onclick="setViewMode('list')">☰ Details</button>
+      <button type="button" id="view-grid-btn" class="btn-plain" onclick="setViewMode('grid')">🔳 Icons</button>
+      <button type="button" class="btn-plain" onclick="openViewOptions()">⚙️ Details &amp; Sort</button>
+    </div>
   </div>
+  <div id="add-item-slot"></div>
 </div>
 
 <div id="list-header"></div>
@@ -260,7 +261,7 @@ function searchNewItemMetadata(btn) {
     if (results) results.innerHTML = '<p class="empty">Type a ' + primaryField + ' above first.</p>';
     return;
   }
-  const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : slug === 'video-games' ? 'rawg' : 'web-images';
+  const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : slug === 'video-games' ? 'rawg' : slug === 'vinyl-records' ? 'musicbrainz' : 'web-images';
   htmx.ajax('GET', '/items/new/lookup/' + path + '?q=' + encodeURIComponent(q), {target: '#new-item-search-results', swap: 'innerHTML'});
 }
 

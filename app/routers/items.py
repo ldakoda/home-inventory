@@ -12,6 +12,7 @@ from starlette.datastructures import UploadFile
 from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
+from app.integrations.musicbrainz import search_musicbrainz
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
@@ -491,6 +492,19 @@ def lookup_rawg(request: Request, item_id: str, q: str, panel: str = "", repo: R
         request,
         "partials/lookup_results.html",
         {"item": item, "matches": matches, "kind": "rawg", "target_id": _target_id(item_id, panel), "panel": panel},
+    )
+
+
+@router.get("/items/{item_id}/lookup/musicbrainz", response_class=HTMLResponse)
+def lookup_musicbrainz(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
+    item = _item_or_none(repo, item_id)
+    matches = search_musicbrainz(q)
+    for m in matches:
+        m["match_json"] = _match_json(m)
+    return templates.TemplateResponse(
+        request,
+        "partials/lookup_results.html",
+        {"item": item, "matches": matches, "kind": "musicbrainz", "target_id": _target_id(item_id, panel), "panel": panel},
     )
 
 

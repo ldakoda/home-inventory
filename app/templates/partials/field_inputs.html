@@ -1,6 +1,8 @@
 {% for field in category.fields %}
 <label>{{ field }}{{ ' *' if field == category.primary_field else '' }}</label>
-{% if field == "Ownership" %}
+{% if field == "Track List" %}
+<textarea name="{{ field }}" rows="8" placeholder="1. Track name&#10;2. Track name&#10;...">{{ values.get(field, '') if values else '' }}</textarea>
+{% elif field == "Ownership" %}
 <input type="text" name="{{ field }}" value="{{ values.get(field, '') if values else '' }}" list="ownership-options">
 <datalist id="ownership-options">
   <option value="Physical">
