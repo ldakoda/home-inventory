@@ -54,7 +54,21 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
     if not query:
         return []
 
-    res = _throttled_get(f"{BASE_URL}/release-group", {"query": query, "fmt": "json", "limit": num_results})
+    # A bare query weights toward a literal release-group *title* match, so
+    # searching just an artist's name (e.g. "Michael Jackson", no album title)
+    # surfaced other people's songs/tributes literally titled that before any
+    # of the artist's own albums. OR-ing in an explicit artist-field match
+    # fixes that -- but quoting the *whole* query for the artist field too
+    # broke the opposite case (a combined "artist + album title" search like
+    # "Fleetwood Mac Rumours" doesn't literally equal any artist's name, so a
+    # quoted artist clause there matched nothing and narrowed results instead
+    # of adding to them). Keeping the plain query as one alternative and
+    # adding the artist-field match as a second, rather than quoting both,
+    # keeps the original title-search behavior intact while still surfacing
+    # an artist-only search's own catalog.
+    safe_query = query.replace('"', "")
+    lucene_query = f'{safe_query} OR artist:"{safe_query}"'
+    res = _throttled_get(f"{BASE_URL}/release-group", {"query": lucene_query, "fmt": "json", "limit": num_results})
     if res is None:
         return []
     groups = res.json().get("release-groups", [])[:num_results]
