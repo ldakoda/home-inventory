@@ -21,6 +21,11 @@
       onclick="htmx.ajax('GET', '/items/{{ item.id if item else 'new' }}/lookup/bgg-details?bgg_id={{ m.id }}&title=' + encodeURIComponent(this.dataset.title) + '{{ ('&panel=' + panel) if panel else '' }}', {target: '#modal-slot', swap: 'innerHTML'})">
       Select
     </button>
+    {% elif kind == "musicbrainz" and m.get("id") %}
+    <button type="button" class="btn-primary" data-title="{{ m.Title }}" data-artist="{{ m.get('Artist', '') }}" data-year="{{ m.get('Year Released', '') }}"
+      onclick="htmx.ajax('GET', '/items/{{ item.id if item else 'new' }}/lookup/musicbrainz-details?rg_id={{ m.id }}&title=' + encodeURIComponent(this.dataset.title) + '&artist=' + encodeURIComponent(this.dataset.artist) + '&year=' + encodeURIComponent(this.dataset.year) + '{{ ('&panel=' + panel) if panel else '' }}', {target: '#modal-slot', swap: 'innerHTML'})">
+      Select
+    </button>
     {% elif item %}
     <button type="button" class="btn-primary" data-match="{{ m.match_json }}" data-mode="apply"
       data-item-id="{{ item.id }}" data-target-id="{{ target_id }}" data-panel="{{ panel }}"

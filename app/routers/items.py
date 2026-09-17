@@ -12,7 +12,7 @@ from starlette.datastructures import UploadFile
 from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
-from app.integrations.musicbrainz import fetch_cover_art, search_musicbrainz
+from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, search_musicbrainz
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
@@ -519,6 +519,26 @@ def lookup_musicbrainz_thumb(request: Request, item_id: str, rg_id: str, repo: R
     _item_or_none(repo, item_id)
     image_path = fetch_cover_art(rg_id)
     return templates.TemplateResponse(request, "partials/lazy_thumb.html", {"image_path": image_path})
+
+
+@router.get("/items/{item_id}/lookup/musicbrainz-details", response_class=HTMLResponse)
+def lookup_musicbrainz_details(
+    request: Request, item_id: str, rg_id: str, title: str, artist: str = "", year: str = "",
+    panel: str = "", repo: Repository = Depends(get_repository),
+):
+    # Rendered into the global #modal-slot, mirroring bgg-details -- the grid's
+    # own lazy-loaded art (lookup_musicbrainz_thumb) is cheap/visual-only, but
+    # committing to a candidate deserves the real tracklist and a correctly-
+    # matched cover fetched fresh for THIS candidate, not whatever was (or
+    # wasn't) loaded into the grid at render time.
+    item = _item_or_none(repo, item_id)
+    details = fetch_full_details(rg_id)
+    match = {"Title": title, "Artist": artist, "Year Released": year, **details}
+    return templates.TemplateResponse(
+        request,
+        "partials/musicbrainz_confirm_modal.html",
+        {"item": item, "match": match, "match_json": _match_json(match), "panel": panel, "target_id": _target_id(item_id, panel)},
+    )
 
 
 @router.get("/categories/{slug}/new-lookup-panel", response_class=HTMLResponse)

@@ -393,6 +393,13 @@ function openMetadataConfirmModal(el) {
   h3.textContent = data.Title || '';
   card.appendChild(h3);
 
+  if (data.Artist) {
+    const artistEl = document.createElement('p');
+    artistEl.className = 'modal-artist';
+    artistEl.textContent = data.Artist;
+    card.appendChild(artistEl);
+  }
+
   const ul = document.createElement('ul');
   ul.className = 'modal-details';
   METADATA_MODAL_DETAIL_FIELDS.forEach(field => {
@@ -411,6 +418,17 @@ function openMetadataConfirmModal(el) {
     p.className = 'modal-description';
     p.textContent = data.Description;
     card.appendChild(p);
+  }
+
+  if (data['Track List']) {
+    const trackLabel = document.createElement('p');
+    trackLabel.className = 'modal-tracklist-label';
+    trackLabel.textContent = '🎵 Track List';
+    card.appendChild(trackLabel);
+    const pre = document.createElement('pre');
+    pre.className = 'modal-tracklist';
+    pre.textContent = data['Track List'];
+    card.appendChild(pre);
   }
 
   const actions = document.createElement('div');

@@ -84,7 +84,7 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
         })
 
     if matches:
-        _fill_top_candidate_details(matches[0])
+        matches[0].update(fetch_full_details(matches[0]["id"]))
 
     return matches
 
@@ -132,21 +132,28 @@ def _cover_art_for_release(release_id: str) -> str:
     return front.get("thumbnails", {}).get("large") or front.get("image", "")
 
 
-def _fill_top_candidate_details(match: dict) -> None:
-    rg_id = match.get("id", "")
+def fetch_full_details(rg_id: str) -> dict:
+    """Genre, Track List, and cover art for one specific candidate -- used both
+    to eagerly fill the top search result and, on demand, to fill in whichever
+    candidate the user actually clicks "Select" on (see lookup_musicbrainz_details
+    in items.py), so the confirm-before-applying preview always reflects the
+    exact candidate chosen rather than possibly-stale/partial data captured
+    when the results list was first rendered.
+    """
+    details: dict = {}
     if not rg_id:
-        return
+        return details
 
     genre_res = _throttled_get(f"{BASE_URL}/release-group/{rg_id}", {"inc": "genres", "fmt": "json"})
     if genre_res is not None:
         genres = sorted(genre_res.json().get("genres", []) or [], key=lambda g: -g.get("count", 0))
         names = [g["name"] for g in genres[:3] if g.get("name")]
         if names:
-            match["Genre"] = ", ".join(n.title() for n in names)
+            details["Genre"] = ", ".join(n.title() for n in names)
 
     release = _pick_release(rg_id)
     if release is None:
-        return
+        return details
     release_id = release["id"]
 
     tracks_res = _throttled_get(f"{BASE_URL}/release/{release_id}", {"inc": "recordings", "fmt": "json"})
@@ -160,8 +167,10 @@ def _fill_top_candidate_details(match: dict) -> None:
                 if title:
                     track_lines.append(f"{pos}. {title}")
         if track_lines:
-            match["Track List"] = "\n".join(track_lines)
+            details["Track List"] = "\n".join(track_lines)
 
     image = _cover_art_for_release(release_id)
     if image:
-        match["image_path"] = image
+        details["image_path"] = image
+
+    return details

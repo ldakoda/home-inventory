@@ -1,0 +1,38 @@
+<div class="modal-backdrop" onclick="if (event.target === this) this.remove()">
+  <div class="modal-card">
+    <button type="button" class="modal-close" onclick="document.getElementById('modal-slot').innerHTML=''">✖</button>
+    {% if match.image_path %}<img src="{{ match.image_path }}" class="modal-cover" alt="">{% endif %}
+    <h3>{{ match.Title }}</h3>
+    {% if match.get("Artist") %}<p class="modal-artist">{{ match.Artist }}</p>{% endif %}
+    <ul class="modal-details">
+      {% if match.get("Year Released") %}<li><strong>Year:</strong> {{ match["Year Released"] }}</li>{% endif %}
+      {% if match.get("Genre") %}<li><strong>Genre:</strong> {{ match.Genre }}</li>{% endif %}
+    </ul>
+    {% if match.get("Track List") %}
+    <p class="modal-tracklist-label">🎵 Track List</p>
+    <pre class="modal-tracklist">{{ match["Track List"] }}</pre>
+    {% endif %}
+    {% if item %}
+    <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#{{ target_id }}" hx-swap="outerHTML"
+          hx-on::after-request="document.getElementById('modal-slot').innerHTML=''">
+      {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
+      <input type="hidden" name="Title" value="{{ match.Title }}">
+      {% if match.get("Artist") %}<input type="hidden" name="Artist" value="{{ match.Artist }}">{% endif %}
+      {% if match.get("Year Released") %}<input type="hidden" name="Year Released" value="{{ match['Year Released'] }}">{% endif %}
+      {% if match.get("Genre") %}<input type="hidden" name="Genre" value="{{ match.Genre }}">{% endif %}
+      {% if match.get("Track List") %}<textarea style="display:none" name="Track List">{{ match["Track List"] }}</textarea>{% endif %}
+      {% if match.image_path %}<input type="hidden" name="image_path" value="{{ match.image_path }}">{% endif %}
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">✅ Apply</button>
+        <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Cancel</button>
+      </div>
+    </form>
+    {% else %}
+    <div class="modal-actions">
+      <button type="button" class="btn-primary" data-match="{{ match_json }}"
+        onclick="fillAddForm(this); document.getElementById('modal-slot').innerHTML=''">✅ Use This</button>
+      <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Cancel</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
