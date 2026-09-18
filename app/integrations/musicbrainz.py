@@ -146,7 +146,13 @@ def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], st
     lucene_query = f'{safe_query} OR artist:"{safe_query}"'
     res = _throttled_get(f"{BASE_URL}/release-group", {"query": lucene_query, "fmt": "json", "limit": num_results})
     if res is None:
-        return [], None
+        # _throttled_get returning None means the request itself failed (a
+        # timeout, or MusicBrainz's 1/sec anonymous limit rejecting it) --
+        # not that the search legitimately came back empty. Saying so instead
+        # of just showing "No matches found" (which reads as "this album
+        # doesn't exist") is the honest message, and tells the user retrying
+        # is actually worth doing.
+        return [], "Search failed -- MusicBrainz didn't respond in time. Try searching again in a moment."
     groups = res.json().get("release-groups", [])[:num_results]
 
     matches = []
