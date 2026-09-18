@@ -273,7 +273,10 @@ function searchNewItemMetadata(btn) {
     return;
   }
   const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : slug === 'video-games' ? 'rawg' : slug === 'vinyl-records' ? 'musicbrainz' : 'web-images';
-  htmx.ajax('GET', '/items/new/lookup/' + path + '?q=' + encodeURIComponent(q), {target: '#new-item-search-results', swap: 'innerHTML'});
+  // Passing the button as "source" makes htmx resolve its hx-indicator
+  // attribute for this request -- htmx.ajax has no swap/target-side spinner
+  // of its own, so without this the button's hx-indicator would never fire.
+  htmx.ajax('GET', '/items/new/lookup/' + path + '?q=' + encodeURIComponent(q), {source: btn, target: '#new-item-search-results', swap: 'innerHTML'});
 }
 
 function fillAddForm(el) {

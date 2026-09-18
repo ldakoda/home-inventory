@@ -107,69 +107,74 @@
     <p class="lookup-label">🎬 Search OMDb for metadata &amp; poster:</p>
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
-      <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/omdb?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
+      <button type="button" class="btn-plain" hx-indicator="#lookup-spinner-{{ item.id }}"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/omdb?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {source: this, target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search OMDb
       </button>
       <button type="button" class="btn-plain"
         onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
         🖼️ Browse Google Images
       </button>
+      <span id="lookup-spinner-{{ item.id }}" class="spinner htmx-indicator" role="status" aria-label="Searching…"></span>
     </div>
     <p class="lookup-hint">No automated search reliably covers store-exclusive combo packs -- "Browse Google Images" opens a real search in a new tab; copy an image's address and paste it into Photo URL above.</p>
     {% elif item.category.slug == "games" %}
     <p class="lookup-label">🎲 Search BoardGameGeek for details &amp; box art (falls back to Wikipedia for outdoor/yard games BGG doesn't cover):</p>
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
-      <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
+      <button type="button" class="btn-plain" hx-indicator="#lookup-spinner-{{ item.id }}"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/bgg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {source: this, target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search BGG
       </button>
       <button type="button" class="btn-plain"
         onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
         🖼️ Browse Google Images
       </button>
+      <span id="lookup-spinner-{{ item.id }}" class="spinner htmx-indicator" role="status" aria-label="Searching…"></span>
     </div>
     {% elif item.category.slug == "video-games" %}
     <p class="lookup-label">🕹️ Search RAWG for details &amp; cover art:</p>
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
-      <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/rawg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
+      <button type="button" class="btn-plain" hx-indicator="#lookup-spinner-{{ item.id }}"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/rawg?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {source: this, target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search RAWG
       </button>
       <button type="button" class="btn-plain"
         onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
         🖼️ Browse Google Images
       </button>
+      <span id="lookup-spinner-{{ item.id }}" class="spinner htmx-indicator" role="status" aria-label="Searching…"></span>
     </div>
     <p class="lookup-hint">Number of Players is best-effort (derived from RAWG's tags, e.g. "Singleplayer"/"Co-op") -- it's not exact player counts like a board game's box.</p>
     {% elif item.category.slug == "vinyl-records" %}
     <p class="lookup-label">💿 Search MusicBrainz for tracklist, artist &amp; cover art:</p>
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
-      <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/musicbrainz?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
+      <button type="button" class="btn-plain" hx-indicator="#lookup-spinner-{{ item.id }}"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/musicbrainz?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {source: this, target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search MusicBrainz
       </button>
       <button type="button" class="btn-plain"
         onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
         🖼️ Browse Google Images
       </button>
+      <span id="lookup-spinner-{{ item.id }}" class="spinner htmx-indicator" role="status" aria-label="Searching…"></span>
     </div>
     <p class="lookup-hint">Only the top match gets full details (tracklist lookup is several chained API calls) -- if it's not the right pressing, try a more specific search (add the year or a distinguishing word).</p>
     {% else %}
     <p class="lookup-label">🌐 Search the web for a product photo:</p>
     <div class="lookup-search-row">
       <input type="text" id="lookup-q-{{ item.id }}" value="{{ item.name }}">
-      <button type="button" class="btn-plain"
-        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/web-images?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
+      <button type="button" class="btn-plain" hx-indicator="#lookup-spinner-{{ item.id }}"
+        onclick="htmx.ajax('GET', '/items/{{ item.id }}/lookup/web-images?q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), {source: this, target: '#lookup-results-{{ item.id }}', swap: 'innerHTML'}).then(() => autoFillFromSearch('{{ item.id }}'))">
         🔍 Search Web Photos
       </button>
       <button type="button" class="btn-plain"
         onclick="window.open('https://www.google.com/search?tbm=isch&q=' + encodeURIComponent(document.getElementById('lookup-q-{{ item.id }}').value), '_blank')">
         🖼️ Browse Google Images
       </button>
+      <span id="lookup-spinner-{{ item.id }}" class="spinner htmx-indicator" role="status" aria-label="Searching…"></span>
     </div>
     {% endif %}
     <div id="lookup-results-{{ item.id }}"></div>

@@ -207,6 +207,23 @@ input.auto-filled, textarea.auto-filled { border-color: var(--warning); backgrou
 .file-name-label { font-size: 0.85rem; color: var(--text-muted); }
 .camera-btn { display: none; }
 @media (pointer: coarse) { .camera-btn { display: inline-flex; } }
+
+/* htmx toggles the "htmx-request" class on the indicator while its request
+   is in flight -- hidden the rest of the time. */
+.htmx-indicator { visibility: hidden; }
+.htmx-request.htmx-indicator { visibility: visible; }
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-left: 8px;
+  vertical-align: middle;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .attachments-panel-wrap { margin-top: 14px; border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; background: var(--panel); }
 .attachments-list { list-style: none; padding: 0; margin: 0 0 8px; display: flex; flex-direction: column; gap: 4px; }
 .attachment-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
