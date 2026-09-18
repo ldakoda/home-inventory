@@ -498,13 +498,13 @@ def lookup_rawg(request: Request, item_id: str, q: str, panel: str = "", repo: R
 @router.get("/items/{item_id}/lookup/musicbrainz", response_class=HTMLResponse)
 def lookup_musicbrainz(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _item_or_none(repo, item_id)
-    matches = search_musicbrainz(q)
+    matches, note = search_musicbrainz(q)
     for m in matches:
         m["match_json"] = _match_json(m)
     return templates.TemplateResponse(
         request,
         "partials/lookup_results.html",
-        {"item": item, "matches": matches, "kind": "musicbrainz", "target_id": _target_id(item_id, panel), "panel": panel},
+        {"item": item, "matches": matches, "kind": "musicbrainz", "target_id": _target_id(item_id, panel), "panel": panel, "note": note},
     )
 
 

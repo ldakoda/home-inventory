@@ -22,6 +22,17 @@ _MIN_GAP_SECONDS = 1.1
 _lock = threading.Lock()
 _last_request_at = 0.0
 
+# MusicBrainz tags reissues/greatest-hits/live sets/remix albums with a
+# "secondary-types" list on top of the primary "Album" type -- for a real
+# artist's catalog these outnumber actual studio albums by ~10 to 1 (e.g.
+# Michael Jackson's "type=Album" browse is ~100 entries, of which only 12 are
+# real studio albums), so an artist-only search needs these stripped out to
+# be useful as a "top albums" list at all.
+_EXCLUDED_SECONDARY_TYPES = {
+    "compilation", "live", "soundtrack", "remix", "dj-mix",
+    "mixtape/street", "demo", "interview", "audiobook", "spokenword",
+}
+
 
 def _throttled_get(url: str, params: dict) -> requests.Response | None:
     global _last_request_at
@@ -39,7 +50,51 @@ def _throttled_get(url: str, params: dict) -> requests.Response | None:
     return res if res.status_code == 200 else None
 
 
-def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
+def _lookup_artist(safe_query: str) -> dict | None:
+    """Confidently resolve a bare artist-name search (e.g. "Michael Jackson",
+    no album title) to one specific MusicBrainz artist, so it can be routed to
+    their studio discography instead of a generic text search. MusicBrainz's
+    own relevance score (0-100) does the disambiguating: an exact/near-exact
+    artist name scores ~100, while a combined "artist + album title" query
+    (e.g. "Fleetwood Mac Rumours") scores far lower or returns nothing at all
+    -- which is exactly the signal needed to leave that case to the existing
+    release-group text search below, unchanged.
+    """
+    res = _throttled_get(f"{BASE_URL}/artist", {"query": f'artist:"{safe_query}"', "fmt": "json", "limit": 1})
+    if res is None:
+        return None
+    artists = res.json().get("artists", []) or []
+    if not artists or artists[0].get("score", 0) < 90:
+        return None
+    return artists[0]
+
+
+def _artist_studio_albums(artist_id: str, artist_name: str, limit: int) -> list[dict]:
+    """The artist's real studio albums only -- see _EXCLUDED_SECONDARY_TYPES
+    for why the raw browse needs filtering down this much. Sorted oldest
+    first, like a normal discography listing.
+    """
+    res = _throttled_get(f"{BASE_URL}/release-group", {"artist": artist_id, "type": "album", "fmt": "json", "limit": 100})
+    if res is None:
+        return []
+    groups = res.json().get("release-groups", []) or []
+    studio = [
+        g for g in groups
+        if not ({s.lower() for s in (g.get("secondary-types") or [])} & _EXCLUDED_SECONDARY_TYPES)
+    ]
+    studio.sort(key=lambda g: g.get("first-release-date") or "9999")
+    return [
+        {
+            "Title": g.get("title", ""),
+            "Artist": artist_name,
+            "Year Released": (g.get("first-release-date") or "")[:4],
+            "id": g.get("id", ""),
+        }
+        for g in studio[:limit]
+    ]
+
+
+def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], str | None]:
     """Vinyl-record metadata source. MusicBrainz needs no API key/signup (unlike
     RAWG for video games), but its data model is release-group (the abstract
     album) -> release (a specific pressing/format) -> tracks -- there's no
@@ -52,7 +107,27 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
     """
     query = query.strip()
     if not query:
-        return []
+        return [], None
+
+    safe_query = query.replace('"', "")
+
+    # Try resolving the query to one specific artist first, so an artist-only
+    # search (no album title) surfaces that artist's actual studio discography
+    # instead of whatever a generic text search ranks highest (which, for a
+    # famous name, is mostly tribute albums and other people's songs literally
+    # titled after them).
+    artist = _lookup_artist(safe_query)
+    if artist:
+        matches = _artist_studio_albums(artist["id"], artist.get("name", safe_query), max(num_results, 10))
+        # A single-word query can also exactly match some obscure act's literal
+        # name (e.g. "Rumours" is, confusingly, also an obscure band -- not just
+        # the Fleetwood Mac album title) -- require a real multi-album catalog
+        # before trusting the artist read over a plain title search, so a thin
+        # one-release homonym doesn't hijack an actual album-title search.
+        if len(matches) >= 2:
+            matches[0].update(fetch_full_details(matches[0]["id"]))
+            note = f"Showing {artist.get('name', safe_query)}'s studio albums (compilations, live albums, and remixes are left out)."
+            return matches, note
 
     # A bare query weights toward a literal release-group *title* match, so
     # searching just an artist's name (e.g. "Michael Jackson", no album title)
@@ -65,12 +140,13 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
     # of adding to them). Keeping the plain query as one alternative and
     # adding the artist-field match as a second, rather than quoting both,
     # keeps the original title-search behavior intact while still surfacing
-    # an artist-only search's own catalog.
-    safe_query = query.replace('"', "")
+    # an artist-only search's own catalog (the _lookup_artist path above is
+    # the real fix for that case now -- this OR clause just remains as a
+    # fallback for artists _lookup_artist doesn't confidently resolve).
     lucene_query = f'{safe_query} OR artist:"{safe_query}"'
     res = _throttled_get(f"{BASE_URL}/release-group", {"query": lucene_query, "fmt": "json", "limit": num_results})
     if res is None:
-        return []
+        return [], None
     groups = res.json().get("release-groups", [])[:num_results]
 
     matches = []
@@ -86,7 +162,7 @@ def search_musicbrainz(query: str, num_results: int = 5) -> list[dict]:
     if matches:
         matches[0].update(fetch_full_details(matches[0]["id"]))
 
-    return matches
+    return matches, None
 
 
 def _pick_release(rg_id: str) -> dict | None:
