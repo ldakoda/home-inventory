@@ -261,7 +261,11 @@ function searchNewItemMetadata(btn) {
   // the primary field (Title) first when Artist already has something typed.
   const artistInput = primaryField !== 'Artist' ? document.querySelector('#dynamic-fields [name="Artist"]') : null;
   const artistVal = artistInput ? artistInput.value.trim() : '';
-  const q = primaryVal || artistVal;
+  // With both filled in, search on the combination (e.g. "Fleetwood Mac
+  // Rumours") rather than just the primary field alone -- it's a much more
+  // precise match than either one on its own, and the album-title search
+  // already handles a combined "artist + title" query well.
+  const q = [artistVal, primaryVal].filter(Boolean).join(' ');
   const results = document.getElementById('new-item-search-results');
   if (!q) {
     const fieldLabel = artistInput ? (primaryField + ' or Artist') : primaryField;
