@@ -9,9 +9,9 @@
     <img src="{{ m.image_path }}" alt="">
     {% elif kind == "bgg" and m.get("id") %}
     {% set auto_load = panel == "missing" and loop.index0 == 0 %}
-    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/bgg-thumb?bgg_id={{ m.id }}{{ ('&panel=' + panel) if panel else '' }}" hx-trigger="{{ 'load, click' if auto_load else 'click' }}" hx-swap="innerHTML" title="Click to load image">🖼️</div>
+    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/bgg-thumb?bgg_id={{ m.id }}{{ ('&panel=' + panel) if panel else '' }}" hx-trigger="{{ 'load, click' if auto_load else 'click' }}" hx-target="this" hx-swap="innerHTML" title="Click to load image">🖼️</div>
     {% elif kind == "musicbrainz" and m.get("id") %}
-    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/musicbrainz-thumb?rg_id={{ m.id }}" hx-trigger="load" hx-swap="innerHTML" title="Loading cover art...">💿</div>
+    <div class="lookup-thumb-slot lookup-thumb-lazy" hx-get="/items/{{ item.id if item else 'new' }}/lookup/musicbrainz-thumb?rg_id={{ m.id }}" hx-trigger="load" hx-target="this" hx-swap="innerHTML" title="Loading cover art...">💿</div>
     {% endif %}
     {% if m.Title %}<div class="lookup-title">{{ m.Title }}{% if m.get("Year Released") %} ({{ m["Year Released"] }}){% endif %}</div>{% endif %}
     {% if m.get("Artist") %}<div class="lookup-artist">{{ m.Artist }}</div>{% endif %}
