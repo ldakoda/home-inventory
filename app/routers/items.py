@@ -13,6 +13,7 @@ from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
 from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, search_musicbrainz
+from app.integrations.vision_ocr import extract_text_from_image, text_to_search_query
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
@@ -505,6 +506,47 @@ def lookup_musicbrainz(request: Request, item_id: str, q: str, panel: str = "", 
         request,
         "partials/lookup_results.html",
         {"item": item, "matches": matches, "kind": "musicbrainz", "target_id": _target_id(item_id, panel), "panel": panel, "note": note},
+    )
+
+
+@router.post("/items/{item_id}/lookup/musicbrainz-photo", response_class=HTMLResponse)
+async def lookup_musicbrainz_photo(request: Request, item_id: str, repo: Repository = Depends(get_repository)):
+    # Snap-a-photo search: this is OCR (reading whatever text is printed on
+    # the cover), not visual cover-art recognition -- it hands the extracted
+    # text to the exact same search_musicbrainz used for a typed query, so it
+    # gets the combined-query/artist-mode handling there for free. Only works
+    # when the cover actually has legible text on it.
+    form = await request.form()
+    panel = str(form.get("panel", ""))
+    item = _item_or_none(repo, item_id)
+    target_id = _target_id(item_id, panel)
+    photo = form.get("photo")
+
+    if not (isinstance(photo, UploadFile) and photo.filename):
+        return templates.TemplateResponse(
+            request, "partials/lookup_results.html",
+            {"item": item, "matches": [], "kind": "musicbrainz", "target_id": target_id, "panel": panel,
+             "note": "No photo received -- try taking the picture again."},
+        )
+
+    image_bytes = await photo.read()
+    text = extract_text_from_image(image_bytes)
+    query = text_to_search_query(text)
+
+    if not query:
+        return templates.TemplateResponse(
+            request, "partials/lookup_results.html",
+            {"item": item, "matches": [], "kind": "musicbrainz", "target_id": target_id, "panel": panel,
+             "note": "Couldn't read any text on that cover -- try a closer, well-lit photo of the front, or search by title/artist instead."},
+        )
+
+    matches, search_note = search_musicbrainz(query)
+    for m in matches:
+        m["match_json"] = _match_json(m)
+    note = f'Read "{query}" off the photo.' + (f" {search_note}" if search_note else "")
+    return templates.TemplateResponse(
+        request, "partials/lookup_results.html",
+        {"item": item, "matches": matches, "kind": "musicbrainz", "target_id": target_id, "panel": panel, "note": note},
     )
 
 

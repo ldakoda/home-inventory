@@ -5,6 +5,7 @@ jinja2
 python-multipart
 google-cloud-firestore
 google-cloud-storage
+google-cloud-vision
 bcrypt
 itsdangerous
 requests
