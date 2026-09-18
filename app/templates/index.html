@@ -254,11 +254,18 @@ applyListDisplay();
 function searchNewItemMetadata(btn) {
   const slug = btn.dataset.slug;
   const primaryField = btn.dataset.primaryField;
-  const input = document.querySelector('#dynamic-fields [name="' + primaryField + '"]');
-  const q = input ? input.value.trim() : '';
+  const primaryInput = document.querySelector('#dynamic-fields [name="' + primaryField + '"]');
+  const primaryVal = primaryInput ? primaryInput.value.trim() : '';
+  // Some categories (vinyl records) can search off either field -- an artist
+  // name alone is enough to pull up their albums, so don't force filling in
+  // the primary field (Title) first when Artist already has something typed.
+  const artistInput = primaryField !== 'Artist' ? document.querySelector('#dynamic-fields [name="Artist"]') : null;
+  const artistVal = artistInput ? artistInput.value.trim() : '';
+  const q = primaryVal || artistVal;
   const results = document.getElementById('new-item-search-results');
   if (!q) {
-    if (results) results.innerHTML = '<p class="empty">Type a ' + primaryField + ' above first.</p>';
+    const fieldLabel = artistInput ? (primaryField + ' or Artist') : primaryField;
+    if (results) results.innerHTML = '<p class="empty">Type a ' + fieldLabel + ' above first.</p>';
     return;
   }
   const path = slug === 'movies' ? 'omdb' : slug === 'games' ? 'bgg' : slug === 'video-games' ? 'rawg' : slug === 'vinyl-records' ? 'musicbrainz' : 'web-images';

@@ -1,5 +1,5 @@
 <div class="lookup-panel">
   <button type="button" class="btn-plain" data-slug="{{ category.slug }}" data-primary-field="{{ category.primary_field }}" onclick="searchNewItemMetadata(this)">🔍 Search</button>
-  <p class="lookup-hint">Fill in the {{ category.primary_field }} above first, then search to auto-fill the rest.</p>
+  <p class="lookup-hint">Fill in the {{ category.primary_field }}{{ ' (or Artist)' if 'Artist' in category.fields and category.primary_field != 'Artist' else '' }} above first, then search to auto-fill the rest.</p>
   <div id="new-item-search-results"></div>
 </div>
