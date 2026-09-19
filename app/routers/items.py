@@ -12,7 +12,7 @@ from starlette.datastructures import UploadFile
 from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
-from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, search_musicbrainz
+from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, find_by_artist_title_split, search_musicbrainz
 from app.integrations.vision_ocr import analyze_cover_photo, text_to_search_query
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
@@ -536,22 +536,42 @@ async def lookup_musicbrainz_photo(request: Request, item_id: str, repo: Reposit
     image_bytes = await photo.read()
     text, web_guess = analyze_cover_photo(image_bytes)
     query = text_to_search_query(text)
+    web_guess = web_guess if web_guess.lower() != query.lower() else ""
 
     matches: list[dict] = []
     search_note = None
     used_query = ""
     via_web_guess = False
 
+    # Try the precise artist+title split match (grounded in the artist's
+    # actual discography, not text relevance) against BOTH signals before
+    # trusting either one's plain search -- OCR reading a few characters
+    # wrong (e.g. "michael" -> "micha") can still produce a query whose
+    # plain search returns real-but-unrelated candidates instead of failing
+    # outright, and "the search came back empty" is what the fallback below
+    # used to depend on to know to try the other signal.
     if query:
-        matches, search_note = search_musicbrainz(query)
-        used_query = query
-
+        matches = find_by_artist_title_split(query)
+        if matches:
+            used_query = query
     if not matches and web_guess:
-        web_matches, web_search_note = search_musicbrainz(web_guess)
-        if web_matches:
-            matches, search_note = web_matches, web_search_note
+        matches = find_by_artist_title_split(web_guess)
+        if matches:
             used_query = web_guess
             via_web_guess = True
+
+    if matches:
+        matches[0].update(fetch_full_details(matches[0]["id"]))
+    else:
+        if query:
+            matches, search_note = search_musicbrainz(query)
+            used_query = query if matches else ""
+        if not matches and web_guess:
+            web_matches, web_search_note = search_musicbrainz(web_guess)
+            if web_matches:
+                matches, search_note = web_matches, web_search_note
+                used_query = web_guess
+                via_web_guess = True
 
     if not used_query:
         return templates.TemplateResponse(

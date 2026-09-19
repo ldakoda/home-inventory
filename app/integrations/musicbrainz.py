@@ -33,6 +33,10 @@ _EXCLUDED_SECONDARY_TYPES = {
     "mixtape/street", "demo", "interview", "audiobook", "spokenword",
 }
 
+# Generic words a reverse-image "best guess" label tends to append that
+# aren't actually part of the title (e.g. "michael buble christmas album").
+_GENERIC_FILLER_WORDS = {"album", "record", "records", "vinyl", "lp", "cover", "art", "sleeve"}
+
 
 def _throttled_get(url: str, params: dict) -> requests.Response | None:
     global _last_request_at
@@ -94,6 +98,65 @@ def _artist_studio_albums(artist_id: str, artist_name: str, limit: int) -> list[
     ]
 
 
+def find_by_artist_title_split(query: str, num_results: int = 5) -> list[dict]:
+    """Public entry point for the artist+title split heuristic (see
+    _find_via_artist_title_split below) -- exposed so a caller with more
+    than one candidate query for the same photo (e.g. the photo-scan route,
+    which has both OCR text and a web-detection guess) can try this precise,
+    discography-grounded match against each of them before falling back to
+    either one's noisier plain text search. That matters because a
+    garbled/partial OCR read can still produce a query whose plain search
+    returns real-but-wrong candidates instead of failing outright -- which
+    would hide the correct album exactly when this matters most, since
+    "the search returned nothing" is no longer a usable signal to fall back
+    to the other candidate query.
+    """
+    query = query.strip()
+    if not query:
+        return []
+    return _find_via_artist_title_split(query.replace('"', ""), num_results)
+
+
+def _find_via_artist_title_split(safe_query: str, num_results: int) -> list[dict]:
+    """A combined "Artist Title" query (e.g. what OCR reads off a photographed
+    cover: "MICHAEL BUBLE CHRISTMAS") loses to MusicBrainz's own text
+    relevance more often than not -- a same-artist compilation whose title
+    literally repeats both words (e.g. "Michael Bublé's Christmas Party")
+    outscores the real album, which is titled plainly just "Christmas", so it
+    can rank low or not appear in the results at all. Splitting the query
+    into a leading artist-name guess and a trailing title-fragment guess,
+    confirming the artist via _lookup_artist, and then checking that
+    artist's own (already-reliable) studio discography for a title
+    containing the fragment sidesteps that scoring problem entirely.
+
+    Tries the longest artist-prefix first (most specific/least ambiguous),
+    falling back to shorter ones only if a longer split's artist doesn't
+    confirm or its discography doesn't contain a matching title.
+    """
+    words = safe_query.split()
+    if len(words) < 2:
+        return []
+    for split in range(len(words) - 1, 0, -1):
+        artist_guess = " ".join(words[:split])
+        # A reverse-image "best guess" phrase (the web-detection fallback in
+        # vision_ocr.py) often tacks on a generic descriptive word ("...
+        # christmas album") that isn't part of the actual title -- dropping
+        # these before matching is what lets that fragment still line up
+        # with the real title ("Christmas") instead of missing by one word.
+        title_words = [w for w in words[split:] if w.lower() not in _GENERIC_FILLER_WORDS]
+        title_fragment = " ".join(title_words).lower()
+        if not title_fragment:
+            continue
+        artist = _lookup_artist(artist_guess)
+        if not artist:
+            continue
+        albums = _artist_studio_albums(artist["id"], artist.get("name", artist_guess), 50)
+        matching = [a for a in albums if title_fragment in a["Title"].lower()]
+        if matching:
+            return matching[:num_results]
+    return []
+
+
 def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], str | None]:
     """Vinyl-record metadata source. MusicBrainz needs no API key/signup (unlike
     RAWG for video games), but its data model is release-group (the abstract
@@ -143,6 +206,14 @@ def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], st
     # an artist-only search's own catalog (the _lookup_artist path above is
     # the real fix for that case now -- this OR clause just remains as a
     # fallback for artists _lookup_artist doesn't confidently resolve).
+    # Splitting the query into an artist-name guess and a title-fragment
+    # guess and checking that artist's real discography catches the album
+    # that plain text relevance below would otherwise bury or drop entirely
+    # (see _find_via_artist_title_split) -- computed before the text search
+    # so it can be merged in ahead of those results, guaranteeing the real
+    # album is actually there rather than hoping it outscores compilations.
+    split_matches = _find_via_artist_title_split(safe_query, num_results)
+
     lucene_query = f'{safe_query} OR artist:"{safe_query}"'
     res = _throttled_get(f"{BASE_URL}/release-group", {"query": lucene_query, "fmt": "json", "limit": num_results})
     if res is None:
@@ -152,6 +223,9 @@ def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], st
         # of just showing "No matches found" (which reads as "this album
         # doesn't exist") is the honest message, and tells the user retrying
         # is actually worth doing.
+        if split_matches:
+            split_matches[0].update(fetch_full_details(split_matches[0]["id"]))
+            return split_matches, None
         return [], "Search failed -- MusicBrainz didn't respond in time. Try searching again in a moment."
     groups = res.json().get("release-groups", [])[:num_results]
 
@@ -164,6 +238,16 @@ def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], st
             "Year Released": (g.get("first-release-date") or "")[:4],
             "id": g.get("id", ""),
         })
+
+    if split_matches:
+        # Promote the split-identified album(s) to the front rather than
+        # just appending them when "missing" -- the real album is often
+        # already in the bare-query results, just buried behind same-artist
+        # compilations, so a naive dedup-and-append would see it as already
+        # present and leave it exactly where the bad ranking put it.
+        split_ids = {m["id"] for m in split_matches}
+        remainder = [m for m in matches if m["id"] not in split_ids]
+        matches = (split_matches + remainder)[:num_results]
 
     if matches:
         matches[0].update(fetch_full_details(matches[0]["id"]))
