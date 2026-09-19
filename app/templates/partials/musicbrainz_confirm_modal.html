@@ -16,14 +16,68 @@
     <form hx-post="/items/{{ item.id }}/apply-metadata" hx-target="#{{ target_id }}" hx-swap="outerHTML"
           hx-on::after-request="document.getElementById('modal-slot').innerHTML=''">
       {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
-      <input type="hidden" name="Title" value="{{ match.Title }}">
-      {% if match.get("Artist") %}<input type="hidden" name="Artist" value="{{ match.Artist }}">{% endif %}
-      {% if match.get("Year Released") %}<input type="hidden" name="Year Released" value="{{ match['Year Released'] }}">{% endif %}
-      {% if match.get("Genre") %}<input type="hidden" name="Genre" value="{{ match.Genre }}">{% endif %}
-      {% if match.get("Track List") %}<textarea style="display:none" name="Track List">{{ match["Track List"] }}</textarea>{% endif %}
-      {% if match.image_path %}<input type="hidden" name="image_path" value="{{ match.image_path }}">{% endif %}
+      <p class="modal-apply-hint">Choose which fields to update -- uncheck any you want to leave as-is:</p>
+      <div class="modal-apply-fields">
+        <div class="modal-apply-field">
+          <label>
+            <input type="checkbox" checked onchange="document.getElementById('apply-title-{{ item.id }}').disabled = !this.checked">
+            <span><strong>Title:</strong> {{ match.Title }}{% if item.attributes.get("Title") and item.attributes.Title != match.Title %}<br><span class="modal-apply-was">was: {{ item.attributes.Title }}</span>{% endif %}</span>
+          </label>
+        </div>
+        <input type="hidden" id="apply-title-{{ item.id }}" name="Title" value="{{ match.Title }}">
+
+        {% if match.get("Artist") %}
+        <div class="modal-apply-field">
+          <label>
+            <input type="checkbox" checked onchange="document.getElementById('apply-artist-{{ item.id }}').disabled = !this.checked">
+            <span><strong>Artist:</strong> {{ match.Artist }}{% if item.attributes.get("Artist") and item.attributes.Artist != match.Artist %}<br><span class="modal-apply-was">was: {{ item.attributes.Artist }}</span>{% endif %}</span>
+          </label>
+        </div>
+        <input type="hidden" id="apply-artist-{{ item.id }}" name="Artist" value="{{ match.Artist }}">
+        {% endif %}
+
+        {% if match.get("Year Released") %}
+        <div class="modal-apply-field">
+          <label>
+            <input type="checkbox" checked onchange="document.getElementById('apply-year-{{ item.id }}').disabled = !this.checked">
+            <span><strong>Year:</strong> {{ match["Year Released"] }}{% if item.attributes.get("Year Released") and item.attributes["Year Released"] != match["Year Released"] %}<br><span class="modal-apply-was">was: {{ item.attributes["Year Released"] }}</span>{% endif %}</span>
+          </label>
+        </div>
+        <input type="hidden" id="apply-year-{{ item.id }}" name="Year Released" value="{{ match['Year Released'] }}">
+        {% endif %}
+
+        {% if match.get("Genre") %}
+        <div class="modal-apply-field">
+          <label>
+            <input type="checkbox" checked onchange="document.getElementById('apply-genre-{{ item.id }}').disabled = !this.checked">
+            <span><strong>Genre:</strong> {{ match.Genre }}{% if item.attributes.get("Genre") and item.attributes.Genre != match.Genre %}<br><span class="modal-apply-was">was: {{ item.attributes.Genre }}</span>{% endif %}</span>
+          </label>
+        </div>
+        <input type="hidden" id="apply-genre-{{ item.id }}" name="Genre" value="{{ match.Genre }}">
+        {% endif %}
+
+        {% if match.get("Track List") %}
+        <div class="modal-apply-field">
+          <label>
+            <input type="checkbox" checked onchange="document.getElementById('apply-tracklist-{{ item.id }}').disabled = !this.checked">
+            <span><strong>Track List</strong>{% if item.attributes.get("Track List") %}<br><span class="modal-apply-was">replaces the current tracklist</span>{% endif %}</span>
+          </label>
+        </div>
+        <textarea style="display:none" id="apply-tracklist-{{ item.id }}" name="Track List">{{ match["Track List"] }}</textarea>
+        {% endif %}
+
+        {% if match.image_path %}
+        <div class="modal-apply-field">
+          <label>
+            <input type="checkbox" checked onchange="document.getElementById('apply-image-{{ item.id }}').disabled = !this.checked">
+            <span><strong>Cover Art</strong>{% if item.image_path %}<br><span class="modal-apply-was">replaces the current photo</span>{% endif %}</span>
+          </label>
+        </div>
+        <input type="hidden" id="apply-image-{{ item.id }}" name="image_path" value="{{ match.image_path }}">
+        {% endif %}
+      </div>
       <div class="modal-actions">
-        <button type="submit" class="btn-primary">✅ Apply</button>
+        <button type="submit" class="btn-primary">✅ Apply Selected</button>
         <button type="button" class="btn-plain" onclick="document.getElementById('modal-slot').innerHTML=''">Cancel</button>
       </div>
     </form>

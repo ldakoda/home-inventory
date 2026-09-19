@@ -281,6 +281,19 @@ document.body.addEventListener('htmx:beforeSwap', function (evt) {
   }
 });
 
+// Edit drawer's MusicBrainz search box only ever had Title (item.name) to go
+// on -- combining it with whatever's currently in the Artist field (same
+// idea as the Add Item form's combined search) is what lets a vague title
+// like "Greatest Hits" actually find the right album once the record's
+// artist is known.
+function buildEditMusicBrainzQuery(itemId) {
+  const titleInput = document.getElementById('lookup-q-' + itemId);
+  const artistInput = document.querySelector('#item-' + itemId + ' [name="Artist"]');
+  const title = titleInput ? titleInput.value.trim() : '';
+  const artist = artistInput ? artistInput.value.trim() : '';
+  return [artist, title].filter(Boolean).join(' ') || title;
+}
+
 function searchNewItemMetadata(btn) {
   const slug = btn.dataset.slug;
   const primaryField = btn.dataset.primaryField;
