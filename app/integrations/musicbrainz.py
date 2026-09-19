@@ -111,7 +111,7 @@ def _artist_studio_albums(artist_id: str, artist_name: str, limit: int) -> list[
     ]
 
 
-def find_by_artist_title_split(query: str, num_results: int = 5) -> list[dict]:
+def find_by_artist_title_split(query: str, num_results: int = 10) -> list[dict]:
     """Public entry point for the artist+title split heuristic (see
     _find_via_artist_title_split below) -- exposed so a caller with more
     than one candidate query for the same photo (e.g. the photo-scan route,
@@ -170,7 +170,7 @@ def _find_via_artist_title_split(safe_query: str, num_results: int) -> list[dict
     return []
 
 
-def search_musicbrainz(query: str, num_results: int = 5) -> tuple[list[dict], str | None]:
+def search_musicbrainz(query: str, num_results: int = 10) -> tuple[list[dict], str | None]:
     """Vinyl-record metadata source. MusicBrainz needs no API key/signup (unlike
     RAWG for video games), but its data model is release-group (the abstract
     album) -> release (a specific pressing/format) -> tracks -- there's no

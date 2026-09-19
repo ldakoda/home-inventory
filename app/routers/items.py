@@ -539,7 +539,7 @@ async def lookup_musicbrainz_photo(request: Request, item_id: str, repo: Reposit
 
     image_bytes = await photo.read()
     queries, web_guess = extract_cover_queries(image_bytes)
-    per_cover_limit = 3 if len(queries) > 1 else 5
+    per_cover_limit = 5 if len(queries) > 1 else 10
     web_guess = web_guess if web_guess.lower() not in [q.lower() for q in queries] else ""
 
     matches: list[dict] = []
@@ -557,14 +557,14 @@ async def lookup_musicbrainz_photo(request: Request, item_id: str, repo: Reposit
             if matches:
                 used_queries = [query]
         if not matches and web_guess:
-            web_matches = find_by_artist_title_split(web_guess, 5)
+            web_matches = find_by_artist_title_split(web_guess, per_cover_limit)
             if web_matches:
                 matches, used_queries, via_web_guess = web_matches, [web_guess], True
         if not matches and query:
             matches, search_note = search_musicbrainz(query, per_cover_limit)
             used_queries = [query] if matches else []
         if not matches and web_guess:
-            web_matches, web_search_note = search_musicbrainz(web_guess, 5)
+            web_matches, web_search_note = search_musicbrainz(web_guess, per_cover_limit)
             if web_matches:
                 matches, used_queries, search_note, via_web_guess = web_matches, [web_guess], web_search_note, True
     else:
