@@ -13,7 +13,7 @@ from app.deps import require_auth
 from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
 from app.integrations.image_search import search_multiple_web_images
 from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, find_by_artist_title_split, search_musicbrainz
-from app.integrations.vision_ocr import analyze_cover_photo, text_to_search_query
+from app.integrations.vision_ocr import extract_cover_queries
 from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
@@ -511,15 +511,19 @@ def lookup_musicbrainz(request: Request, item_id: str, q: str, panel: str = "", 
 
 @router.post("/items/{item_id}/lookup/musicbrainz-photo", response_class=HTMLResponse)
 async def lookup_musicbrainz_photo(request: Request, item_id: str, repo: Repository = Depends(get_repository)):
-    # Snap-a-photo search: reads the cover two ways -- OCR (whatever text is
-    # printed on it) and web detection (Google's reverse-image best guess) --
-    # and hands whichever query actually finds something to the exact same
-    # search_musicbrainz used for a typed query, so it gets the combined-
-    # query/artist-mode handling there for free. OCR goes first since it's
-    # the more precise signal when it works; the web guess is a fallback for
-    # a stylized/partially-framed cover OCR can only read some of, not a
-    # replacement for it (it's a loose natural-language guess, not a clean
-    # search query, so it's less precise when it does find something).
+    # Snap-a-photo search: reads the cover(s) in the photo by prominent text
+    # size and position (see extract_cover_queries -- this is what tells a
+    # cover's real title/artist typography apart from a promo sticker or
+    # barcode, and what lets a photo of two records side by side identify
+    # both instead of mashing all the text into one unsearchable query).
+    #
+    # Each detected cover's text, and the whole-photo web-detection guess,
+    # all get tried through the precise artist+title split match (grounded
+    # in the artist's actual discography) before ANY of them are trusted to
+    # fall back to a plain text search -- a partially-misread cover's plain
+    # search can return real-but-wrong candidates instead of failing
+    # outright, which would otherwise stop a more reliable signal (the web
+    # guess, or a different detected cover) from getting a turn at all.
     form = await request.form()
     panel = str(form.get("panel", ""))
     item = _item_or_none(repo, item_id)
@@ -534,58 +538,68 @@ async def lookup_musicbrainz_photo(request: Request, item_id: str, repo: Reposit
         )
 
     image_bytes = await photo.read()
-    text, web_guess = analyze_cover_photo(image_bytes)
-    query = text_to_search_query(text)
-    web_guess = web_guess if web_guess.lower() != query.lower() else ""
+    queries, web_guess = extract_cover_queries(image_bytes)
+    per_cover_limit = 3 if len(queries) > 1 else 5
+    web_guess = web_guess if web_guess.lower() not in [q.lower() for q in queries] else ""
 
     matches: list[dict] = []
+    used_queries: list[str] = []
     search_note = None
-    used_query = ""
     via_web_guess = False
 
-    # Try the precise artist+title split match (grounded in the artist's
-    # actual discography, not text relevance) against BOTH signals before
-    # trusting either one's plain search -- OCR reading a few characters
-    # wrong (e.g. "michael" -> "micha") can still produce a query whose
-    # plain search returns real-but-unrelated candidates instead of failing
-    # outright, and "the search came back empty" is what the fallback below
-    # used to depend on to know to try the other signal.
-    if query:
-        matches = find_by_artist_title_split(query)
-        if matches:
-            used_query = query
-    if not matches and web_guess:
-        matches = find_by_artist_title_split(web_guess)
-        if matches:
-            used_query = web_guess
-            via_web_guess = True
-
-    if matches:
-        matches[0].update(fetch_full_details(matches[0]["id"]))
-    else:
+    if len(queries) <= 1:
+        # The common case: exactly one detected cover. The web guess is a
+        # single whole-photo signal here, so it's safe to let it rescue this
+        # one slot if the cover's own text doesn't pan out.
+        query = queries[0] if queries else ""
         if query:
-            matches, search_note = search_musicbrainz(query)
-            used_query = query if matches else ""
+            matches = find_by_artist_title_split(query, per_cover_limit)
+            if matches:
+                used_queries = [query]
         if not matches and web_guess:
-            web_matches, web_search_note = search_musicbrainz(web_guess)
+            web_matches = find_by_artist_title_split(web_guess, 5)
             if web_matches:
-                matches, search_note = web_matches, web_search_note
-                used_query = web_guess
-                via_web_guess = True
+                matches, used_queries, via_web_guess = web_matches, [web_guess], True
+        if not matches and query:
+            matches, search_note = search_musicbrainz(query, per_cover_limit)
+            used_queries = [query] if matches else []
+        if not matches and web_guess:
+            web_matches, web_search_note = search_musicbrainz(web_guess, 5)
+            if web_matches:
+                matches, used_queries, search_note, via_web_guess = web_matches, [web_guess], web_search_note, True
+    else:
+        # Multiple detected covers -- resolve each independently (its own
+        # precise match, falling back to a plain search only for that one
+        # cover) so one cover's web-detection guess -- which can only ever
+        # describe one of them -- can't crowd out the other's results by
+        # "succeeding" first and skipping the rest.
+        for q in queries:
+            cover_matches = find_by_artist_title_split(q, per_cover_limit)
+            if not cover_matches:
+                cover_matches, note = search_musicbrainz(q, per_cover_limit)
+                if note:
+                    search_note = note
+            if cover_matches:
+                matches.extend(cover_matches)
+                used_queries.append(q)
 
-    if not used_query:
+    if not matches:
         return templates.TemplateResponse(
             request, "partials/lookup_results.html",
             {"item": item, "matches": [], "kind": "musicbrainz", "target_id": target_id, "panel": panel,
              "note": "Couldn't read any text on that cover, and couldn't visually recognize the album either -- try a closer, well-lit photo of the front, or search by title/artist instead."},
         )
 
+    matches[0].update(fetch_full_details(matches[0]["id"]))
     for m in matches:
         m["match_json"] = _match_json(m)
+
     if via_web_guess:
-        prefix = f'Couldn\'t find a match from the printed text, so recognized the cover as "{used_query}" instead.'
+        prefix = f'Couldn\'t find a match from the printed text, so recognized the cover as "{used_queries[0]}" instead.'
+    elif len(used_queries) > 1:
+        prefix = f"Looks like {len(used_queries)} records in this photo -- showing matches for each."
     else:
-        prefix = f'Read "{used_query}" off the photo.'
+        prefix = f'Read "{used_queries[0]}" off the photo.'
     note = prefix + (f" {search_note}" if search_note else "")
     return templates.TemplateResponse(
         request, "partials/lookup_results.html",
