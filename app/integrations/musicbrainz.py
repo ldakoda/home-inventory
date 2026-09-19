@@ -39,19 +39,32 @@ _GENERIC_FILLER_WORDS = {"album", "record", "records", "vinyl", "lp", "cover", "
 
 
 def _throttled_get(url: str, params: dict) -> requests.Response | None:
+    """A single search can now chain quite a few of these (artist lookup,
+    discography browse, bare-query search, then genre/release/tracks/cover-art
+    for the top result) -- a single transient timeout or 503 anywhere in that
+    longer chain used to fail the whole search. One retry (still respecting
+    the same rate limit before trying again) covers the common transient
+    case without meaningfully changing behavior for a real, persistent
+    outage -- that still correctly gives up and surfaces the honest
+    "search failed" note instead of hanging or retrying forever.
+    """
     global _last_request_at
     with _lock:
-        wait = _MIN_GAP_SECONDS - (time.time() - _last_request_at)
-        if wait > 0:
-            time.sleep(wait)
-        try:
-            res = requests.get(url, params=params, headers=_HEADERS, timeout=10)
-        except requests.RequestException:
-            logger.exception("MusicBrainz request failed for %s", url)
-            return None
-        finally:
+        for attempt in range(2):
+            wait = _MIN_GAP_SECONDS - (time.time() - _last_request_at)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                res = requests.get(url, params=params, headers=_HEADERS, timeout=10)
+            except requests.RequestException:
+                logger.warning("MusicBrainz request failed for %s (attempt %d/2)", url, attempt + 1)
+                _last_request_at = time.time()
+                continue
             _last_request_at = time.time()
-    return res if res.status_code == 200 else None
+            if res.status_code == 200:
+                return res
+            logger.warning("MusicBrainz returned %s for %s (attempt %d/2)", res.status_code, url, attempt + 1)
+    return None
 
 
 def _lookup_artist(safe_query: str) -> dict | None:

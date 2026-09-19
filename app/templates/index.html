@@ -251,6 +251,36 @@ document.body.addEventListener('htmx:afterSwap', function (evt) {
 });
 applyListDisplay();
 
+// A metadata search (Add Item's Search/Scan Cover, or an edit drawer's per-
+// source search) can be fired again -- e.g. the user notices a typo and
+// re-searches -- before the first request's response comes back. MusicBrainz
+// in particular serializes every request through one shared ~1/sec rate
+// limit, so a slower first search's response can arrive *after* a faster
+// second one and silently overwrite the correct results with stale ones --
+// there's no cancellation, so whichever response happens to land last wins.
+// Tagging each request with a per-panel generation number and refusing to
+// swap in anything but the latest one makes "last search fired" the actual
+// rule, instead of "last response to arrive" by coincidence of timing.
+const searchResultsGenerations = new Map();
+const searchResultsRequestGeneration = new WeakMap();
+function isSearchResultsPanel(el) {
+  return !!el && (el.id === 'new-item-search-results' || el.id.startsWith('lookup-results-'));
+}
+document.body.addEventListener('htmx:beforeRequest', function (evt) {
+  const target = evt.detail.target;
+  if (!isSearchResultsPanel(target)) return;
+  const gen = (searchResultsGenerations.get(target) || 0) + 1;
+  searchResultsGenerations.set(target, gen);
+  searchResultsRequestGeneration.set(evt.detail.xhr, gen);
+});
+document.body.addEventListener('htmx:beforeSwap', function (evt) {
+  const target = evt.detail.target;
+  if (!isSearchResultsPanel(target)) return;
+  if (searchResultsRequestGeneration.get(evt.detail.xhr) !== searchResultsGenerations.get(target)) {
+    evt.detail.shouldSwap = false;
+  }
+});
+
 function searchNewItemMetadata(btn) {
   const slug = btn.dataset.slug;
   const primaryField = btn.dataset.primaryField;
