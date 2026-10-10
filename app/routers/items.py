@@ -364,6 +364,25 @@ def lookup_omdb(request: Request, item_id: str, q: str, panel: str = "", repo: R
     )
 
 
+def _web_cover_fallback(title: str) -> str:
+    # BGG's thing endpoint can come back empty (rate limit, auth, outage) even
+    # when the search that found the game worked; a web image search for the box
+    # art is better than a blank card.
+    if not title:
+        return ""
+    urls = search_multiple_web_images(f"{title} board game box", num_results=1)
+    return urls[0] if urls else ""
+
+
+def _bgg_details_with_cover_fallback(bgg_id: str, title: str, priority: bool) -> dict:
+    details = fetch_bgg_game_details(bgg_id, priority=priority)
+    if not details.get("image_path"):
+        cover = _web_cover_fallback(title)
+        if cover:
+            details["image_path"] = cover
+    return details
+
+
 @router.get("/items/{item_id}/lookup/bgg", response_class=HTMLResponse)
 def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Repository = Depends(get_repository)):
     item = _item_or_none(repo, item_id)
@@ -392,7 +411,7 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
     # candidate there stays image-less until clicked (lookup_results.html's
     # click-to-load thumb).
     if matches and not is_bulk_scan:
-        top_details = fetch_bgg_game_details(matches[0]["id"], priority=priority)
+        top_details = _bgg_details_with_cover_fallback(matches[0]["id"], matches[0]["Title"], priority)
         for key in ("image_path", "Number of Players", "Length of Play", "Age Rating", "Description"):
             if top_details.get(key):
                 matches[0][key] = top_details[key]
@@ -429,7 +448,7 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
 
 
 @router.get("/items/{item_id}/lookup/bgg-thumb", response_class=HTMLResponse)
-def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, panel: str = "", repo: Repository = Depends(get_repository)):
+def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, title: str = "", panel: str = "", repo: Repository = Depends(get_repository)):
     # BGG's search endpoint (used above) returns no image at all, only the "thing"
     # endpoint does -- so each search result lazy-loads its own thumbnail via this
     # endpoint after the results render, rather than fetching full details for every
@@ -442,7 +461,10 @@ def lookup_bgg_thumb(request: Request, item_id: str, bgg_id: str, panel: str = "
     _item_or_none(repo, item_id)
     priority = panel != "missing"
     details = fetch_bgg_game_details(bgg_id, priority=priority)
-    return templates.TemplateResponse(request, "partials/lazy_thumb.html", {"image_path": details.get("image_path", "")})
+    image_path = details.get("image_path", "")
+    if not image_path and priority:
+        image_path = _web_cover_fallback(title)
+    return templates.TemplateResponse(request, "partials/lazy_thumb.html", {"image_path": image_path})
 
 
 @router.get("/items/{item_id}/lookup/bgg-details", response_class=HTMLResponse)
@@ -455,6 +477,8 @@ def lookup_bgg_details(request: Request, item_id: str, bgg_id: str, title: str, 
     # Always a "Select" click a user is actively waiting on -- always priority,
     # regardless of which panel/context it was opened from.
     details = fetch_bgg_game_details(bgg_id, priority=True)
+    if not details.get("image_path"):
+        details["image_path"] = _web_cover_fallback(title)
     match = {
         "Title": title,
         "Number of Players": details.get("Number of Players", ""),

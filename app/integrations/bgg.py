@@ -99,6 +99,8 @@ def fetch_bgg_game_matches(game_title: str, priority: bool = False, fast: bool =
                 root = ET.fromstring(res_exact.content)
                 for item in root.findall("item"):
                     items.append(_parse_search_item(item, clean_title))
+            else:
+                logger.warning("BGG exact search for %r returned HTTP %s", clean_title, res_exact.status_code)
 
         if len(items) < 8:
             search_url = f"https://boardgamegeek.com/xmlapi2/search?query={encoded_q}&type=boardgame"
@@ -146,6 +148,9 @@ def fetch_bgg_game_details(bgg_id: str, max_retries: int = 3, priority: bool = F
 
             if res.status_code == 200:
                 return _parse_details(res.content)
+            logger.warning("BGG thing id=%s returned HTTP %s", bgg_id, res.status_code)
+            if res.status_code != 429:
+                break
         except (requests.RequestException, ET.ParseError):
             logger.exception("BGG detail fetch failed for id=%s", bgg_id)
             break
