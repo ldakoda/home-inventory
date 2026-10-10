@@ -10,7 +10,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.datastructures import UploadFile
 
 from app.deps import require_auth
-from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches
+from app.integrations.bgg import fetch_bgg_game_details, fetch_bgg_game_matches, fetch_bgg_images
 from app.integrations.image_search import search_multiple_web_images
 from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, find_by_artist_title_split, search_musicbrainz
 from app.integrations.vision_ocr import extract_cover_queries
@@ -415,6 +415,12 @@ def lookup_bgg(request: Request, item_id: str, q: str, panel: str = "", repo: Re
         for key in ("image_path", "Number of Players", "Length of Play", "Age Rating", "Description"):
             if top_details.get(key):
                 matches[0][key] = top_details[key]
+        # Covers for the remaining cards in one batched request; any that miss
+        # still fall back to the click-to-load thumb.
+        images = fetch_bgg_images([m["id"] for m in matches[1:]], priority=priority)
+        for m in matches[1:]:
+            if images.get(m["id"]):
+                m["image_path"] = images[m["id"]]
 
     kind = "bgg"
     note = None

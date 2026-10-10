@@ -158,6 +158,33 @@ def fetch_bgg_game_details(bgg_id: str, max_retries: int = 3, priority: bool = F
     return {}
 
 
+def fetch_bgg_images(bgg_ids: list[str], priority: bool = False) -> dict[str, str]:
+    """One batched "thing" request (BGG accepts comma-separated ids, up to 20)
+    for every candidate's cover, instead of one request per card.
+    """
+    ids = [i for i in bgg_ids if i][:20]
+    if not ids:
+        return {}
+
+    url = f"https://boardgamegeek.com/xmlapi2/thing?id={','.join(ids)}"
+    try:
+        res = _throttled_get(url, _headers(), timeout=10, priority=priority)
+        if res.status_code != 200:
+            logger.warning("BGG batched thing ids=%s returned HTTP %s", ids, res.status_code)
+            return {}
+        images: dict[str, str] = {}
+        for item in ET.fromstring(res.content).findall("item"):
+            image_elem = item.find("image")
+            if image_elem is None or not image_elem.text:
+                image_elem = item.find("thumbnail")
+            if image_elem is not None and image_elem.text:
+                images[item.attrib.get("id", "")] = image_elem.text.strip()
+        return images
+    except (requests.RequestException, ET.ParseError):
+        logger.exception("BGG batched image fetch failed for ids=%s", ids)
+        return {}
+
+
 def _parse_details(xml_content: bytes) -> dict:
     root = ET.fromstring(xml_content)
     item = root.find("item")
