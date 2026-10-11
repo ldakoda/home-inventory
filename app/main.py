@@ -29,7 +29,17 @@ async def _raise_thread_pool_limit() -> None:
     # starved by it.
     anyio.to_thread.current_default_thread_limiter().total_tokens = 200
 
-app.mount("/static", StaticFiles(directory="app/static"), name="static")
+class _RevalidatingStaticFiles(StaticFiles):
+    # Without a Cache-Control header phones heuristically cache styles.css, so a
+    # deploy's new CSS can sit unused next to new HTML. no-cache still lets the
+    # browser keep the file, it just revalidates (ETag/Last-Modified -> 304).
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
+app.mount("/static", _RevalidatingStaticFiles(directory="app/static"), name="static")
 
 if settings.storage_backend == "local":
     os.makedirs(settings.image_dir, exist_ok=True)
