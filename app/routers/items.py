@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
+
+from app.static_version import STATIC_VERSION
 from starlette.datastructures import UploadFile
 
 from app.deps import require_auth
@@ -24,6 +26,7 @@ from app.storage import get_image_storage
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_v"] = STATIC_VERSION
 
 
 def _get_item_or_404(repo: Repository, item_id: str) -> Item:

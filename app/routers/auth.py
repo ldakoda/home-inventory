@@ -2,12 +2,15 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from app.static_version import STATIC_VERSION
+
 from app.config import get_settings
 from app.deps import SESSION_COOKIE_NAME
 from app.security import create_session_token, verify_password
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_v"] = STATIC_VERSION
 
 
 @router.get("/login", response_class=HTMLResponse)

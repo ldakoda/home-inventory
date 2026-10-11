@@ -2,12 +2,15 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
+from app.static_version import STATIC_VERSION
+
 from app.deps import require_auth
 from app.models import Category
 from app.repository import Repository, get_repository
 
 router = APIRouter(dependencies=[Depends(require_auth)])
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["static_v"] = STATIC_VERSION
 
 
 def slugify(name: str) -> str:
