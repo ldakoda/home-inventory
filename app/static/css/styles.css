@@ -183,6 +183,29 @@ button { font-size: 0.9rem; cursor: pointer; border-radius: var(--radius); borde
 #items-list.grid-view .item-row:hover { background: transparent; }
 #items-list.grid-view .item-thumb { width: 100%; height: 100px; }
 #items-list.grid-view .item-thumb .emoji { font-size: 2.6rem; }
+/* Category icon as a corner tab on the cover, Icons view only. Photo-less
+   items already show the big category emoji, so the badge is only emitted
+   alongside an <img>. */
+.item-cat-badge { display: none; }
+#items-list.grid-view .item-thumb { position: relative; overflow: hidden; border-radius: 6px; }
+#items-list.grid-view .item-cat-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  font-size: 17px;
+  line-height: 1;
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel) 85%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  border-radius: 0 0 10px 0;
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
 #items-list.grid-view .item-main { display: block; width: 100%; text-align: center; }
 #items-list.grid-view .item-name {
   font-size: 0.78rem;

@@ -3,6 +3,7 @@
   <div class="item-thumb item-clickable" hx-get="/items/{{ item.id }}/view" hx-target="#modal-slot" hx-swap="innerHTML">
     {% if item.image_path %}
     <img src="{{ item.image_path }}" loading="lazy" alt="">
+    <span class="item-cat-badge" title="{{ item.category.name }}" aria-hidden="true">{{ item.category.icon }}</span>
     {% else %}
     <span class="emoji">{{ item.category.icon }}</span>
     {% endif %}
