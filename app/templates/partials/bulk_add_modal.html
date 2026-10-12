@@ -1,0 +1,23 @@
+<div class="modal-backdrop" onclick="if (event.target === this) this.remove()">
+  <div class="modal-card bulk-card">
+    <button type="button" class="modal-close" onclick="document.getElementById('modal-slot').innerHTML=''">✖</button>
+    <h3>Bulk add</h3>
+    <p class="bulk-help">One item per line. A line starting with <code>#</code> sets the platform for the lines below it.
+      Use <code>Title | Platform</code> to set it for a single line.</p>
+    <form id="bulk-form" hx-post="/bulk-add/preview" hx-target="#bulk-preview" hx-swap="innerHTML">
+      <label for="bulk-category">Category</label>
+      <select id="bulk-category" name="category_slug">
+        {% for c in categories %}<option value="{{ c.slug }}" {% if c.slug == selected_slug %}selected{% endif %}>{{ c.icon }} {{ c.name }}</option>{% endfor %}
+      </select>
+      <label for="bulk-platform">Default platform <span class="bulk-optional">(optional, for categories with a Platform field)</span></label>
+      <input id="bulk-platform" type="text" name="default_platform" placeholder="e.g. Nintendo Switch">
+      <label for="bulk-text">Items</label>
+      <textarea id="bulk-text" name="text" class="bulk-text" rows="10" placeholder="# Nintendo Switch&#10;Super Mario Odyssey&#10;Mario Kart 8 Deluxe&#10;&#10;# PlayStation 5&#10;Elden Ring"></textarea>
+      <div class="modal-actions">
+        <button type="submit" class="btn-primary">👀 Preview</button>
+        <button type="button" class="btn-plain" hx-get="/bulk-add/seed" hx-target="#bulk-text" hx-swap="outerHTML">📦 Fill with my box of games</button>
+      </div>
+    </form>
+    <div id="bulk-preview"></div>
+  </div>
+</div>

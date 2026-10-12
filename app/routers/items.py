@@ -2,6 +2,7 @@ import difflib
 import json
 import re
 import uuid
+from pathlib import Path
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,6 +21,7 @@ from app.integrations.omdb import fetch_omdb_movie_matches
 from app.integrations.rawg import search_rawg
 from app.integrations.tmdb import search_tmdb
 from app.integrations.wikipedia import search_wikipedia
+from app.bulk_add import entry_key, existing_keys, parse_lines, split_entry
 from app.models import Item
 from app.repository import Repository, get_repository
 from app.storage import get_image_storage
@@ -195,6 +197,66 @@ def new_item_form(request: Request, repo: Repository = Depends(get_repository)):
     return templates.TemplateResponse(
         request, "partials/add_form.html", {"categories": categories, "category": categories[0]}
     )
+
+
+@router.get("/bulk-add", response_class=HTMLResponse)
+def bulk_add_form(request: Request, category: str = "", repo: Repository = Depends(get_repository)):
+    categories = repo.list_categories()
+    selected = next((c.slug for c in categories if c.slug == category), None)
+    if selected is None:
+        # Default to Video Games (the main use so far), else the first category.
+        selected = next((c.slug for c in categories if c.name.lower() == "video games"), categories[0].slug if categories else "")
+    return templates.TemplateResponse(request, "partials/bulk_add_modal.html", {"categories": categories, "selected_slug": selected})
+
+
+@router.get("/bulk-add/seed", response_class=HTMLResponse)
+def bulk_add_seed(request: Request):
+    text = (Path(__file__).resolve().parent.parent / "seed" / "box_of_games.txt").read_text(encoding="utf-8")
+    return templates.TemplateResponse(request, "partials/bulk_add_text.html", {"text": text})
+
+
+@router.post("/bulk-add/preview", response_class=HTMLResponse)
+async def bulk_add_preview(request: Request, repo: Repository = Depends(get_repository)):
+    form = await request.form()
+    category = repo.get_category(str(form.get("category_slug", "")))
+    if category is None:
+        raise HTTPException(404, "Unknown category")
+
+    uses_platform = "Platform" in category.fields
+    have = existing_keys(repo.list_items(category_slug=category.slug), uses_platform)
+    new, dupes = [], []
+    for title, platform in parse_lines(str(form.get("text", "")), str(form.get("default_platform", ""))):
+        (dupes if entry_key(title, platform, uses_platform) in have else new).append((title, platform))
+    return templates.TemplateResponse(request, "partials/bulk_add_preview.html", {"category": category, "new": new, "dupes": dupes})
+
+
+@router.post("/bulk-add/commit", response_class=HTMLResponse)
+async def bulk_add_commit(request: Request, repo: Repository = Depends(get_repository)):
+    form = await request.form()
+    category = repo.get_category(str(form.get("category_slug", "")))
+    if category is None:
+        raise HTTPException(404, "Unknown category")
+
+    uses_platform = "Platform" in category.fields
+    have = existing_keys(repo.list_items(category_slug=category.slug), uses_platform)
+    added = skipped = 0
+    for value in form.getlist("entry"):
+        title, platform = split_entry(str(value))
+        key = entry_key(title, platform, uses_platform)
+        if not title or key in have:
+            skipped += 1
+            continue
+        attributes = {f: "" for f in category.fields}
+        attributes[category.primary_field] = title
+        if uses_platform:
+            attributes["Platform"] = platform
+        repo.create_item(category_slug=category.slug, name=title, image_path=None, attributes=attributes)
+        have.add(key)
+        added += 1
+
+    response = templates.TemplateResponse(request, "partials/bulk_add_done.html", {"category": category, "added": added, "skipped": skipped})
+    response.headers["HX-Trigger"] = "refreshList"
+    return response
 
 
 @router.get("/categories/{slug}/fields", response_class=HTMLResponse)

@@ -1,0 +1,4 @@
+<p class="bulk-summary">✅ Added <strong>{{ added }}</strong> item{{ '' if added == 1 else 's' }} to {{ category.name }}{% if skipped %} ({{ skipped }} skipped as duplicates){% endif %}.</p>
+<div class="modal-actions">
+  <button type="button" class="btn-primary" onclick="document.getElementById('modal-slot').innerHTML=''">Done</button>
+</div>

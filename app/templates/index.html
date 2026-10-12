@@ -19,6 +19,7 @@
 
   <div class="toolbar-actions-row">
     <button class="btn-primary" hx-get="/items/new" hx-target="#add-item-slot" hx-swap="innerHTML">➕ Add Item</button>
+    <button class="btn-plain" hx-get="/bulk-add" hx-vals="js:{category: document.getElementById('category-filter').value}" hx-target="#modal-slot" hx-swap="innerHTML">📥 Bulk add</button>
     <div class="view-toggle">
       <button type="button" id="view-list-btn" class="btn-plain" onclick="setViewMode('list')">☰ Details</button>
       <button type="button" id="view-grid-btn" class="btn-plain" onclick="setViewMode('grid')">🔳 Icons</button>
