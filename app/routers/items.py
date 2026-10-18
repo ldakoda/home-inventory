@@ -775,18 +775,33 @@ async def apply_metadata(request: Request, item_id: str, repo: Repository = Depe
 _MISSING_METADATA_CONFIG = {
     "movies": {"key_field": "Rating", "lookup_path": "omdb"},
     "games": {"key_field": "Number of Players", "lookup_path": "bgg"},
+    # RAWG has no one field every game is guaranteed to carry, so video games are
+    # flagged on a missing cover or Description only (key_field None).
+    "video-games": {"key_field": None, "lookup_path": "rawg"},
 }
 
 
+def _missing_config(slug: str) -> dict | None:
+    # Tolerate slug spelling differences (video-games / video_games / videogames).
+    if slug in _MISSING_METADATA_CONFIG:
+        return _MISSING_METADATA_CONFIG[slug]
+    normalized = re.sub(r"[^a-z0-9]", "", slug.lower())
+    if normalized == "videogames":
+        return _MISSING_METADATA_CONFIG["video-games"]
+    return None
+
+
 def _items_missing_metadata(repo: Repository, slug: str) -> list[Item]:
-    config = _MISSING_METADATA_CONFIG.get(slug)
+    config = _missing_config(slug)
     if config is None:
         return []
 
     key_field = config["key_field"]
 
     def is_missing(item: Item) -> bool:
-        if not item.image_path or not item.attributes.get(key_field, "").strip():
+        if not item.image_path:
+            return True
+        if key_field and not item.attributes.get(key_field, "").strip():
             return True
         return not item.attributes.get("Description", "").strip()
 
@@ -795,7 +810,7 @@ def _items_missing_metadata(repo: Repository, slug: str) -> list[Item]:
 
 @router.get("/categories/{slug}/missing-metadata", response_class=HTMLResponse)
 def missing_metadata_banner(request: Request, slug: str, repo: Repository = Depends(get_repository)):
-    if slug not in _MISSING_METADATA_CONFIG:
+    if _missing_config(slug) is None:
         return HTMLResponse("")
     count = len(_items_missing_metadata(repo, slug))
     return templates.TemplateResponse(
@@ -805,7 +820,7 @@ def missing_metadata_banner(request: Request, slug: str, repo: Repository = Depe
 
 @router.get("/categories/{slug}/missing-metadata/panel", response_class=HTMLResponse)
 def missing_metadata_panel(request: Request, slug: str, repo: Repository = Depends(get_repository)):
-    config = _MISSING_METADATA_CONFIG.get(slug)
+    config = _missing_config(slug)
     if config is None:
         return HTMLResponse("")
     category = repo.get_category(slug)
