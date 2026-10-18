@@ -4,6 +4,17 @@
     <button type="button" class="btn-plain" onclick="document.getElementById('missing-metadata-panel-slot').innerHTML=''">✖ Close</button>
   </div>
 
+  {% if items and lookup_path == "rawg" %}
+  <div class="autofill-box">
+    <p class="autofill-help">Fill in covers and details automatically for games that match with at least 80% confidence. Only empty fields are filled, and uncertain matches are left for you.</p>
+    <button type="button" class="btn-primary"
+      hx-post="/categories/{{ category.slug }}/missing-metadata/autofill"
+      hx-target="#autofill-log" hx-swap="innerHTML"
+      hx-on::before-request="this.disabled = true">✨ Auto-fill confident matches</button>
+    <div id="autofill-log"></div>
+  </div>
+  {% endif %}
+
   {% if not items %}
   <p class="empty">🎉 All {{ category.name }} items have complete metadata!</p>
   {% else %}
@@ -15,8 +26,8 @@
     </div>
     <div id="missing-meta-candidates-{{ item.id }}"
       hx-get="/items/{{ item.id }}/lookup/{{ lookup_path }}?q={{ item.name | urlencode }}&panel=missing"
-      hx-trigger="load delay:{{ loop.index0 * 400 }}ms" hx-swap="innerHTML">
-      <p class="empty">Searching…</p>
+      {% if lookup_path == "rawg" %}hx-trigger="click"{% else %}hx-trigger="load delay:{{ loop.index0 * 400 }}ms"{% endif %} hx-swap="innerHTML">
+      {% if lookup_path == "rawg" %}<button type="button" class="btn-plain">🔍 Find matches</button>{% else %}<p class="empty">Searching…</p>{% endif %}
     </div>
   </div>
   {% endfor %}

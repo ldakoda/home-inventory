@@ -18,7 +18,7 @@ from app.integrations.image_search import search_multiple_web_images
 from app.integrations.musicbrainz import fetch_cover_art, fetch_full_details, find_by_artist_title_split, search_musicbrainz
 from app.integrations.vision_ocr import extract_cover_queries
 from app.integrations.omdb import fetch_omdb_movie_matches
-from app.integrations.rawg import search_rawg
+from app.integrations.rawg import find_confident_match, search_rawg
 from app.integrations.tmdb import search_tmdb
 from app.integrations.wikipedia import search_wikipedia
 from app.bulk_add import entry_key, existing_keys, parse_lines, split_entry
@@ -829,3 +829,74 @@ def missing_metadata_panel(request: Request, slug: str, repo: Repository = Depen
         "partials/missing_metadata_panel.html",
         {"items": _items_missing_metadata(repo, slug), "category": category, "lookup_path": config["lookup_path"]},
     )
+
+
+_AUTOFILL_BATCH = 10
+_AUTOFILL_FIELDS = ("Genre", "ESRB Rating", "Year Released", "Number of Players", "Description")
+
+
+@router.post("/categories/{slug}/missing-metadata/autofill", response_class=HTMLResponse)
+async def missing_metadata_autofill(request: Request, slug: str, repo: Repository = Depends(get_repository)):
+    """Fills in covers and details for games RAWG matches with >= 80% confidence.
+
+    Works through the flagged items a few at a time (a whole library in one
+    request would outlive Cloud Run's request timeout). Each response renders
+    this batch's results plus a sentinel that fires the next batch as soon as it
+    is swapped in, carrying the ids already handled and the running totals.
+    Only empty fields are filled; anything already on an item is left alone.
+    """
+    config = _missing_config(slug)
+    category = repo.get_category(slug)
+    if config is None or category is None or config["lookup_path"] != "rawg":
+        raise HTTPException(400, "Auto-fill isn't available for this category")
+
+    form = await request.form()
+    done = {i for i in str(form.get("done", "")).split(",") if i}
+    applied_total = int(str(form.get("applied", "0")) or 0)
+    skipped_total = int(str(form.get("skipped", "0")) or 0)
+
+    todo = [i for i in _items_missing_metadata(repo, slug) if i.id not in done]
+    batch, remaining = todo[:_AUTOFILL_BATCH], len(todo) - _AUTOFILL_BATCH
+
+    results = []
+    for item in batch:
+        done.add(item.id)
+        entry, score, guess = find_confident_match(item.name, item.attributes.get("Platform", ""))
+        pct = int(round(score * 100))
+        if entry is None:
+            skipped_total += 1
+            results.append({"ok": False, "name": item.name, "pct": pct, "guess": guess})
+            continue
+
+        attributes = dict(item.attributes)
+        filled = []
+        for key in _AUTOFILL_FIELDS:
+            if key in category.fields and not str(attributes.get(key, "")).strip() and entry.get(key):
+                attributes[key] = entry[key]
+                filled.append(key)
+        image_path = item.image_path
+        if not image_path and entry.get("image_path"):
+            image_path = entry["image_path"]
+            filled.insert(0, "Cover")
+
+        if filled:
+            repo.update_item(item.id, image_path=image_path, attributes=attributes)
+        applied_total += 1
+        results.append({"ok": True, "name": item.name, "pct": pct, "guess": entry.get("Title", guess), "filled": filled})
+
+    response = templates.TemplateResponse(
+        request,
+        "partials/missing_metadata_autofill.html",
+        {
+            "results": results,
+            "slug": slug,
+            "more": remaining > 0,
+            "remaining": max(remaining, 0),
+            "done": ",".join(sorted(done)),
+            "applied": applied_total,
+            "skipped": skipped_total,
+        },
+    )
+    if remaining <= 0 or not batch:
+        response.headers["HX-Trigger"] = "refreshList, refreshMissingMeta"
+    return response

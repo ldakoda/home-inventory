@@ -334,3 +334,12 @@ input.auto-filled, textarea.auto-filled { border-color: var(--warning); backgrou
 .bulk-list label { display: flex; align-items: baseline; gap: 8px; margin: 0; font-size: 0.9rem; color: var(--text); }
 .bulk-list small { color: var(--text-muted); }
 .bulk-dupe { opacity: 0.55; }
+
+/* Missing-metadata auto-fill */
+.autofill-box { margin-bottom: 12px; }
+.autofill-help { font-size: 0.85rem; color: var(--text-muted); margin: 0 0 8px; }
+#autofill-log { margin-top: 10px; max-height: 45vh; overflow-y: auto; }
+.autofill-row { padding: 5px 0; border-bottom: 1px solid var(--border); font-size: 0.9rem; }
+.autofill-row small { color: var(--text-muted); }
+.autofill-skip { opacity: 0.8; }
+.autofill-progress, .autofill-summary { padding: 8px 0; font-size: 0.9rem; }

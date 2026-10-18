@@ -1,0 +1,19 @@
+{% for r in results %}
+<div class="autofill-row {{ 'autofill-ok' if r.ok else 'autofill-skip' }}">
+  {% if r.ok %}
+  ✅ <strong>{{ r.name }}</strong> <small>→ {{ r.guess }} ({{ r.pct }}%){% if r.filled %} · filled {{ r.filled | join(', ') }}{% else %} · nothing new to fill{% endif %}</small>
+  {% else %}
+  ⏭️ <strong>{{ r.name }}</strong> <small>{% if r.guess %}best guess “{{ r.guess }}” only {{ r.pct }}% · {% endif %}left for you</small>
+  {% endif %}
+</div>
+{% endfor %}
+{% if more %}
+<div class="autofill-progress"
+  hx-post="/categories/{{ slug }}/missing-metadata/autofill"
+  hx-trigger="load" hx-swap="outerHTML"
+  hx-vals='{"done": "{{ done }}", "applied": "{{ applied }}", "skipped": "{{ skipped }}"}'>
+  ⏳ {{ applied }} filled, {{ skipped }} left for you… {{ remaining }} to go
+</div>
+{% else %}
+<div class="autofill-summary">🏁 Finished: <strong>{{ applied }}</strong> filled in, <strong>{{ skipped }}</strong> left for you to check.</div>
+{% endif %}
